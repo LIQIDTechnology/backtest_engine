@@ -117,7 +117,7 @@ venv.bak/
 .spyproject
 
 #Files
-config.ini
+config/config.ini
 .config.ini
 
 # Rope project settings
