@@ -1,7 +1,7 @@
 import datetime as dt
 
-class Calendar(object):
 
+class Calendar(object):
     def __init__(self, mic_str: str = None):
         self.mic_ls = mic_str
 

@@ -1,35 +1,27 @@
 from pathlib import Path
 from typing import Union
-from portfolio import Portfolio
-from instruments import Instruments
-import datetime as dt
+
 import numpy as np
 import pandas as pd
-from loguru import logger
+import datetime as dt
+
+from portfolio import Portfolio
 
 
 class Strategy(Portfolio):
 
     def __init__(self, config_path: Union[str, Path]):
         super().__init__(config_path)
-        self.instruments = None  # List of Instrument Objects
+        self.start_date = self.config["strategy"]["start date"]
         self.params = None
 
-    def wake_up(self):
-        self.instruments = [Instruments(instr) for instr in self.config["instruments"]]
-        pass
+    def init_details(self):
+        self.details = pd.DataFrame(columns=[self.config["instruments"][inst] for inst in self.config["instruments"]])
 
     def routine(self):
-        pass
+        #Test
+        print(self.details)
+        print(self.instrument_ls)
 
     def go_to_sleep(self):
         pass
-
-    def run(self):
-        self.manage_portfolio()
-
-
-
-
-
-

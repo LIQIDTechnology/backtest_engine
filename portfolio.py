@@ -6,7 +6,8 @@ from loguru import logger
 
 import numpy as np
 import pandas as pd
-from calendar import Calendar
+from ex_calendar import Calendar
+from instrument import Instrument
 
 
 class Portfolio(object):
@@ -14,7 +15,14 @@ class Portfolio(object):
     def __init__(self, config_path: Union[str, Path]):
         self.logger = logger
         self.config = self.load_config(config_path)
-        self.calendar = Calendar(self.config["strategy"]["g"])
+        self.calendar = Calendar(self.config["strategy"]["calendar"])
+        self.strategy_name = self.config["strategy"]["strategy name"]
+        self.root_path = self.config["paths"]["root_path"]
+        self.prices_table = pd.read_csv(self.root_path / Path("prices.csv"), index_col="Date")
+        self.instruments_table = pd.read_csv(self.root_path / Path("instruments.csv"), index_col="Instrument Ticker")
+        self.details = pd.DataFrame([])
+        self.instrument_ls = []
+
 
     def manage_portfolio(self):
         self.wake_up()
@@ -22,9 +30,11 @@ class Portfolio(object):
             self.routine()
         self.go_to_sleep()
 
-    @abstractmethod
     def wake_up(self):
-        pass
+        self.init_details()
+        for inst in self.config["instruments"]:
+            inst_ticker = self.config["instruments"][inst]
+            self.instrument_ls.append(Instrument(self.instruments_table.loc[inst_ticker, :]))
 
     @abstractmethod
     def routine(self):
@@ -38,10 +48,20 @@ class Portfolio(object):
         self.export_files()
         self.generate_fact_sheet()
 
-    def export_files(self):
+    @abstractmethod
+    def init_details(self):
         pass
 
+    def export_files(self):
+        """
+        Exports the Details Sheet.
+        """
+        self.details.to_csv(self.root_path / Path(f"{self.strategy_name}_details.csv"))
+
     def generate_fact_sheet(self):
+        """
+        Generates the Fact Sheet.
+        """
         pass
 
     def load_config(self, config_path: Union[str, Path]) -> configparser.RawConfigParser:
