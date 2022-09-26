@@ -5,6 +5,12 @@ class Calendar(object):
     def __init__(self, mic_str: str = None):
         self.mic_ls = mic_str
 
+    def bday_add(self, date: dt.date, days: int) -> dt.date:
+        new_date = date + dt.timedelta(days=days)
+        while 5 <= new_date.weekday() <= 6:
+            new_date = new_date + dt.timedelta(days=days)
+        return new_date
+
     def bday_range(self, start: dt, end: dt) -> list:
         numdays = end-start
         start.weekday()

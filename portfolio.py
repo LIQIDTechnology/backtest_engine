@@ -14,17 +14,19 @@ from instrument import Instrument
 class Portfolio(object):
 
     def __init__(self, config_path: Union[str, Path]):
-        #self.logger = logger
         self.config = self.load_config(config_path)
         self.calendar = Calendar(self.config["strategy"]["calendar"])
         self.strategy_name = self.config["strategy"]["strategy name"]
+        self.start_date = dt.datetime.strptime(self.config["strategy"]["start date"], "%Y-%m-%d").date()
+        self.end_date = dt.datetime.strptime(self.config["strategy"]["end date"], "%Y-%m-%d").date()
         self.root_path = self.config["paths"]["root_path"]
         self.prices_table = self.load_prices(path=self.root_path / Path("prices.csv"), index_col="Date")
         self.instruments_table = pd.read_csv(self.root_path / Path("instruments.csv"), index_col="Instrument Ticker")
         self.details = pd.DataFrame([])
         self.instrument_ls = []
 
-    def load_prices(self, path: Path, index_col: str) -> pd.DataFrame:
+    @staticmethod
+    def load_prices(path: Path, index_col: str) -> pd.DataFrame:
         tbl = pd.read_csv(path)
         tbl[index_col] = tbl[index_col].apply(lambda x: dt.datetime.strptime(x, "%Y-%m-%d").date())
         tbl = tbl.set_index(index_col)
@@ -48,7 +50,6 @@ class Portfolio(object):
     def routine(self, day: dt.date):
         pass
 
-    @abstractmethod
     def go_to_sleep(self):
         """
         Generate Output Files, e.g Details Sheet or Fact Sheet
