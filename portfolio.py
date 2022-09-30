@@ -42,9 +42,26 @@ class Portfolio(object):
 
     def wake_up(self):
         self.init_details()
-        for inst in self.config["instruments"]:
-            inst_ticker = self.config["instruments"][inst]
-            self.instrument_ls.append(Instrument(self.instruments_table.loc[inst_ticker, :]))
+        self.instrument_ls = [Instrument(self.instruments_table.loc[self.config["instruments"][inst], :])
+                              for inst in self.config["instruments"]]
+
+        end_date = self.end_date if self.end_date is not None else dt.date.today()
+        start_date = self.calendar.bday_add(self.start_date, days=-1)
+        bday_range = self.calendar.bday_range(start=start_date, end=end_date)
+
+        # Import Prices Table
+        inst_col_ls = [inst.ticker for inst in self.instrument_ls]
+        self.details = pd.concat([self.details, self.prices_table.loc[bday_range, inst_col_ls]])
+
+        # Deduce Return Table
+        inst_ret_col_ls = [f"{inst.ticker} Return" for inst in self.instrument_ls]
+        price_mat_t = np.array(self.details.loc[self.details.index[1]:self.details.index[-1], inst_col_ls])
+        price_mat_tm1 = np.array(self.details.loc[self.details.index[0]:self.details.index[-2], inst_col_ls])
+        ret_mat = price_mat_t / price_mat_tm1 - 1
+        ret_df = pd.DataFrame(ret_mat)
+        ret_df.columns = inst_ret_col_ls
+        ret_df.index = bday_range[1:]
+        self.details.loc[bday_range[1:], inst_ret_col_ls] = ret_df
 
     @abstractmethod
     def routine(self, day: dt.date):
