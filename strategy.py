@@ -64,7 +64,7 @@ class Strategy(Portfolio):
         self.details.loc[t, scol_wts:ecol_wts] = wts_t_arr
         return wts_t_arr
 
-    def get_weights(self, t: dt.date):
+    def set_weights(self, t: dt.date):
         if self.check_rebal(t):
             self.reset_weights(t)
         else:
@@ -76,21 +76,22 @@ class Strategy(Portfolio):
         self.details.loc[t, scol:ecol] = self.prices_table.loc[t, scol:ecol]
 
     def check_rebal(self, t):
-        tm1 = self.calendar.bday_add(t, days=-1)
-        check_arr = np.array(self.details.loc[tm1, ["NDUECAPF Index Weight", "NDUEEGF Index Weight", "MSDEE15N Index Weight", "NDDLJN Index Weight", "NDDUUS Index Weight"]])
-        check_arr_dic = {}
-        truth = []
+        # tm1 = self.calendar.bday_add(t, days=-1)
+        # check_arr = np.array(self.details.loc[tm1, ["NDUECAPF Index Weight", "NDUEEGF Index Weight", "MSDEE15N Index Weight", "NDDLJN Index Weight", "NDDUUS Index Weight"]])
+        # check_arr_dic = {}
+        # truth = []
+        #
+        # for unit in self.config["weights"]:
+        #     check_arr_dic[unit] = check_arr[list(self.weights.keys()).index(unit)]
+        #     truth.append(self.weights[unit] - self.threshold[unit] >= check_arr_dic[unit] >= self.weights[unit] + self.threshold[unit])
 
-        for unit in self.config["weights"]:
-            check_arr_dic[unit] = check_arr[list(self.weights.keys()).index(unit)]
-            truth.append(self.weights[unit] - self.threshold[unit] >= check_arr_dic[unit] >= self.weights[unit] + self.threshold[unit])
-
-        if any(item is True for item in truth):
-            self.details.loc[t, "Rebalance?"] = 0
-            return False
-        else:
-            self.details.loc[t, "Rebalance?"] = 1
-            return True
+        # if any(item is True for item in truth):
+        #     self.details.loc[t, "Rebalance?"] = 0
+        #     return False
+        # else:
+        #     self.details.loc[t, "Rebalance?"] = 1
+        #     return True
+        return False
 
     def get_return(self, t: dt.date):
         tm1 = self.calendar.bday_add(t, days=-1)
@@ -107,12 +108,7 @@ class Strategy(Portfolio):
         self.details.loc[t, "EUR Curncy Return"] = 0
 
     def routine(self, t: dt.date):
-        print(t)
         tm1 = self.calendar.bday_add(t, days=-1)
         self.reset_weights(tm1) if self.start_date == t else None
-        self.calc_benchmark(t, rk=10)
-        self.get_prices(t)
-        self.get_return(t)
         self.get_portfolio_ret(t)
-        self.get_weights(t)
-        #self.export_files()
+        self.set_weights(t)
