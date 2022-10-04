@@ -7,6 +7,7 @@ import datetime as dt
 
 import numpy as np
 import pandas as pd
+
 from ex_calendar import Calendar
 from instrument import Instrument
 
@@ -23,7 +24,9 @@ class Portfolio(object):
         self.prices_table = self.load_prices(path=self.root_path / Path("prices.csv"), index_col="Date")
         self.instruments_table = pd.read_csv(self.root_path / Path("instruments.csv"), index_col="Instrument Ticker")
         self.details = pd.DataFrame([])
-        self.instrument_ls = []
+        self.details_np = None
+        self.instrument_ls = [Instrument(self.instruments_table.loc[self.config["instruments"][inst], :])
+                              for inst in self.config["instruments"]]
 
     @staticmethod
     def load_prices(path: Path, index_col: str) -> pd.DataFrame:
@@ -36,14 +39,21 @@ class Portfolio(object):
         self.wake_up()
         end_date = self.end_date if self.end_date is not None else dt.date.today()
         bday_range = self.calendar.bday_range(start=self.start_date, end=end_date)
-        for day in bday_range:
-            self.routine(day)
+
+        # for day, row in self.details.iterrows():
+        #     self.routine2(day, row) if day in bday_range else None
+        # self.details = self.details.apply(lambda row: self.routine2(row) if row.name in bday_range else None, axis=1)
+        self.details_np = self.details.values
+
+        for k in range(1, len(bday_range)+1):
+            self.routine_np(k)
+
+        # for day in bday_range:
+        #     self.routine(day)
         self.go_to_sleep()
 
     def wake_up(self):
         self.init_details()
-        self.instrument_ls = [Instrument(self.instruments_table.loc[self.config["instruments"][inst], :])
-                              for inst in self.config["instruments"]]
 
         end_date = self.end_date if self.end_date is not None else dt.date.today()
         start_date = self.calendar.bday_add(self.start_date, days=-1)
@@ -62,6 +72,7 @@ class Portfolio(object):
         ret_df.columns = inst_ret_col_ls
         ret_df.index = bday_range[1:]
         self.details.loc[bday_range[1:], inst_ret_col_ls] = ret_df
+        self.details.loc[:, "EUR Curncy Return"] = 0
 
     @abstractmethod
     def routine(self, day: dt.date):
@@ -82,8 +93,10 @@ class Portfolio(object):
         """
         Exports the Details Sheet.
         """
-        self.details.to_csv(self.root_path / Path(f"{self.strategy_name}_details.csv"))
-        print(f'Details Sheet exported to {self.root_path / Path(f"{self.strategy_name}_details.csv")}')
+        self.details = pd.DataFrame(self.details_np, columns=self.details.columns, index=self.details.index)
+
+        # self.details.to_csv(self.root_path / Path(f"{self.strategy_name}_details.csv"))
+        # print(f'Details Sheet exported to {self.root_path / Path(f"{self.strategy_name}_details.csv")}')
 
     def generate_fact_sheet(self):
         """
