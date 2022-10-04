@@ -7,10 +7,12 @@ class Instrument(object):
         self.currency = instrument["Currency"]  # Currency
         self.cost = None  # TER p.a.
         self.weight = instrument["Weight"]
+        self.unit1 = instrument["UNIT I"]
+        self.unit2 = instrument["UNIT II"]
         self.unit3 = instrument["UNIT III"]
 
     def __str__(self):
-        return f"Instrument({self.type}/{self.ticker}/{self.name}/{self.currency}/{self.weight}/{self.unit3})"
+        return f"Instrument({self.type}/{self.ticker}/{self.name}/{self.currency}/{self.weight}/{self.unit1}/{self.unit2}/{self.unit3})"
 
     def __repr__(self):
-        return f"Instrument({self.type}/{self.ticker}/{self.name}/{self.currency}/{self.weight}/{self.unit3})"
+        return f"Instrument({self.type}/{self.ticker}/{self.name}/{self.currency}/{self.weight}/{self.unit1}/{self.unit2}/{self.unit3})"

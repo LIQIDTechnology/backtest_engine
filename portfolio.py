@@ -37,19 +37,13 @@ class Portfolio(object):
 
     def manage_portfolio(self):
         self.wake_up()
+
         end_date = self.end_date if self.end_date is not None else dt.date.today()
         bday_range = self.calendar.bday_range(start=self.start_date, end=end_date)
+        self.details_np = self.details.values  # Convert DataFrame into Numpy Matrix
+        for day_idx in range(1, len(bday_range)+1):
+            self.routine(day_idx)
 
-        # for day, row in self.details.iterrows():
-        #     self.routine2(day, row) if day in bday_range else None
-        # self.details = self.details.apply(lambda row: self.routine2(row) if row.name in bday_range else None, axis=1)
-        self.details_np = self.details.values
-
-        for k in range(1, len(bday_range)+1):
-            self.routine_np(k)
-
-        # for day in bday_range:
-        #     self.routine(day)
         self.go_to_sleep()
 
     def wake_up(self):
@@ -75,7 +69,7 @@ class Portfolio(object):
         self.details.loc[:, "EUR Curncy Return"] = 0
 
     @abstractmethod
-    def routine(self, day: dt.date):
+    def routine(self, day: int):
         pass
 
     def go_to_sleep(self):

@@ -14,7 +14,7 @@ class Calendar(object):
     def bday_range(self, start: dt, end: dt) -> list:
         numdays = end-start
         start.weekday()
-        bday_range = [start + dt.timedelta(days=k) for k in range(0,(numdays.days)) if (start + dt.timedelta(days=k)).weekday() < 5]
+        bday_range = [start + dt.timedelta(days=k) for k in range(0, (numdays.days + 1)) if (start + dt.timedelta(days=k)).weekday() < 5]
         return bday_range
 
     def __repr__(self):

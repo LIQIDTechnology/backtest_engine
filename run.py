@@ -34,14 +34,17 @@ if __name__ == "__main__":
     # # perform the l-bfgs-b algorithm search
     # result = optimize.minimize(f, pt, method='L-BFGS-B')
     # print(result)
-    sr_ls = []
+    # sr_ls = []
+    #
+    # for k in range(0, 101):
+    #     sr = f(k/100)
+    #     print(k, sr)
+    #     sr_ls.append(sr)
 
-    for k in range(0, 101):
-        sr = f(k/100)
-        print(k, sr)
-        sr_ls.append(sr)
+    sr = f(0.03)
+    print(sr)
 
     profiler.disable()
 
     stats = pstats.Stats(profiler).sort_stats('cumtime')
-    # stats.print_stats()
+    stats.print_stats()
