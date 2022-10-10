@@ -40,7 +40,9 @@ class Portfolio(object):
 
         end_date = self.end_date if self.end_date is not None else dt.date.today()
         bday_range = self.calendar.bday_range(start=self.start_date, end=end_date)
+
         self.details_np = self.details.values  # Convert DataFrame into Numpy Matrix
+
         for day_idx in range(1, len(bday_range)+1):
             self.routine(day_idx)
 
