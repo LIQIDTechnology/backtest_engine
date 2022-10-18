@@ -10,6 +10,7 @@ class Instrument(object):
         self.unit1 = instrument["UNIT I"]
         self.unit2 = instrument["UNIT II"]
         self.unit3 = instrument["UNIT III"]
+        self.product_cost = instrument["Product Cost"]
 
     def __str__(self):
         return f"Instrument({self.type}/{self.ticker}/{self.name}/{self.currency}/{self.weight}/{self.unit1}/{self.unit2}/{self.unit3})"

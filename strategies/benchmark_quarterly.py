@@ -16,8 +16,6 @@ class Strategy(Portfolio):
         super().__init__(config_path)
         self.unit3_scale = scale_unit
 
-        self.unit1_thres = {}
-        self.unit2_thres = {}
         self.unit3_thres = {}
 
         self.unit1_thres_breach = {}
@@ -66,7 +64,6 @@ class Strategy(Portfolio):
         self.ret_col_np = [self.details.columns.get_loc(col) for col in self.ret_col]
         self.pf_ret_col = self.details.columns.get_loc("Portfolio Return")
         self.rebalance_col = self.details.columns.get_loc("Rebalance?")
-
         self.unit1_thres_breach = {cluster: self.details.columns.get_loc(cluster) for cluster in self.unit1_ls}
         self.unit2_thres_breach = {cluster: self.details.columns.get_loc(cluster) for cluster in self.unit2_ls}
         self.unit3_thres_breach = {cluster: self.details.columns.get_loc(cluster) for cluster in self.unit3_ls}
@@ -108,11 +105,7 @@ class Strategy(Portfolio):
         self.unit3to2_map = dict(zip(self.instruments_table["UNIT III"], self.instruments_table["UNIT II"]))
         self.unit2to1_map = dict(zip(self.instruments_table["UNIT II"], self.instruments_table["UNIT I"]))
 
-        # THRESHOLD UNIT I-III
-        for cluster in self.unit1_ls:
-            self.unit1_thres[cluster] = float(self.config["threshold"][cluster])
-        for cluster in self.unit2_ls:
-            self.unit2_thres[cluster] = float(self.config["threshold"][cluster])
+        # THRESHOLD UNIT III
         for cluster in self.unit3_ls:
             unit2_cluster = self.unit3to2_map[cluster]
             unit2_wt = self.unit2_weights[unit2_cluster]
@@ -124,44 +117,24 @@ class Strategy(Portfolio):
         return self.details_np[t, self.wts_col_np]
 
     def check_rebal(self, t):
-        bool = False
-
-        for cluster in self.unit1_ls:
-            weight = self.details_np[t-1, self.unit1_idx[cluster]].sum()
-            cluster_wt = self.unit1_weights[cluster]
-            thres = self.unit1_thres[cluster]
-            if cluster_wt - thres < weight < cluster_wt + thres:
-                self.details_np[t, self.unit1_thres_breach[cluster]] = 0
-            else:
-                self.details_np[t, self.unit1_thres_breach[cluster]] = 1
-                bool = True
-
-        for cluster in self.unit2_ls:
-            weight = self.details_np[t-1, self.unit2_idx[cluster]].sum()
-            cluster_wt = self.unit2_weights[cluster]
-            thres = self.unit2_thres[cluster]
-            if cluster_wt - thres < weight < cluster_wt + thres:
-                self.details_np[t, self.unit2_thres_breach[cluster]] = 0
-            else:
-                self.details_np[t, self.unit2_thres_breach[cluster]] = 1
-                bool = True
-
-        for cluster in self.unit3_ls:
-            weight = self.details_np[t-1, self.unit3_idx[cluster]].sum()
-            cluster_wt = self.unit3_weights[cluster]
-            thres = self.unit3_thres[cluster]
-            if cluster_wt - thres < weight < cluster_wt + thres:
-                self.details_np[t, self.unit3_thres_breach[cluster]] = 0
-            else:
-                self.details_np[t, self.unit3_thres_breach[cluster]] = 1
-                bool = True
-
-        if bool:
-            self.details_np[t, self.rebalance_col] = 1
+        """
+        Triggers Rebalancing Quarterly
+        """
+        today = self.details.index[t]
+        if today == self.start_date:
+            rebal_bool = False
         else:
-            self.details_np[t, self.rebalance_col] = 0
+            td_month = self.details.index[t].month
+            ytd_month = self.details.index[t-1].month
 
-        return bool
+            if td_month != ytd_month and td_month in (3, 6, 9, 12):
+                rebal_bool = True
+            else:
+                rebal_bool = False
+
+        self.details_np[t, self.rebalance_col] = 1 if rebal_bool else 0
+
+        return rebal_bool
 
     def calc_weights(self, t):
         pf_ret_t = self.details_np[t, self.pf_ret_col]
@@ -175,9 +148,17 @@ class Strategy(Portfolio):
         self.reset_weights(t) if self.check_rebal(t) else self.calc_weights(t)
 
     def get_portfolio_ret(self, t):
-        wts_array = self.details_np[t-1, self.wts_col_np]
+
+        wts_array_tm1 = self.details_np[t-1, self.wts_col_np]
         ret_array = self.details_np[t, self.ret_col_np]
-        pf_ret = np.dot(wts_array, ret_array)
+        pf_ret = np.dot(wts_array_tm1, ret_array)
+
+        if self.details.index[t] > self.start_date and self.check_rebal(t-1):
+            wts_array_tm2 = self.details_np[t-2, self.wts_col_np]
+            volume_traded = sum(abs(wts_array_tm2-wts_array_tm1))
+            trading_cost = volume_traded * self.trading_cost
+            pf_ret = pf_ret - trading_cost
+
         self.details_np[t, self.pf_ret_col] = pf_ret
         return pf_ret
 

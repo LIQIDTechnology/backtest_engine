@@ -23,6 +23,7 @@ class Portfolio(object):
         self.strategy_name = self.config["strategy"]["strategy name"]
         self.start_date = dt.datetime.strptime(self.config["strategy"]["start date"], "%Y-%m-%d").date()
         self.end_date = dt.datetime.strptime(self.config["strategy"]["end date"], "%Y-%m-%d").date()
+        self.trading_cost = float(self.config["strategy"]["trading costs"])
 
         # PORTFOLIO MANAGEMENT
         self.prices_table = self.init_prices(path=self.root_path / Path("prices.csv"), index_col="Date")
@@ -40,7 +41,7 @@ class Portfolio(object):
         keep_col = [*keep_col, *weight_col]
         instruments_table = self.instruments_table.loc[:, keep_col]
         instruments_table.rename(columns={weight_col[0]: "Weight"}, inplace=True)
-        instruments_table = instruments_table[instruments_table["Weight"] != 0]
+        self.instruments_table = instruments_table[instruments_table["Weight"] != 0]
         instrument_ls = [Instrument(instruments_table.loc[inst, :]) for inst in instruments_table.index]
         return instrument_ls
 
@@ -62,7 +63,39 @@ class Portfolio(object):
         for day_idx in range(1, len(bday_range)+1):
             self.routine(day_idx)
 
+
         self.go_to_sleep()
+        kpi_dic = self.get_kpi()
+        return kpi_dic
+
+    def get_kpi(self):
+        days_per_year = 252
+
+        # Count of Rebalancing
+        rebal_count = self.details.loc[:,"Rebalance?"].sum()
+
+        sharpe = 3
+        sortino = 3
+
+        # Max Drawdown
+        levels = pd.Series(1.0).append(self.details["Cumulative Portfolio Return"][1:]+1)
+        max = np.maximum.accumulate(levels)
+        max_drawdown = (levels / max - 1).min()
+        mdd = max_drawdown
+
+        # Annual Return Vola
+        array = np.array(self.details["Portfolio Return"][1:])
+        std_pa = (((array + 1) ** 2).mean() ** days_per_year - (array + 1).mean() ** (2 * days_per_year)) ** (1 / 2)
+        vola = std_pa
+
+        # Total Return
+        tot_ret = (self.details.loc[self.end_date, "Cumulative Portfolio Return"] - 1) * 100
+        tot_ret_str = f'{"{:.2f}".format(tot_ret)} %'
+        kpi_dic = {"Rebalancing Count": rebal_count,
+                   "Annualized Volatility": vola,
+                   "Maximum Drawdown": mdd,
+                   "Total Return": tot_ret}
+        return kpi_dic
 
     def wake_up(self):
         self.init_details()
@@ -87,6 +120,16 @@ class Portfolio(object):
         self.details.loc[bday_range[1:], inst_ret_col_ls] = ret_df
         self.details.loc[:, "EUR Curncy Return"] = 0
 
+        # Apply Product Cost
+        for inst in self.instrument_ls:
+            ret_series = self.details.loc[:, f"{inst.ticker} Return"]
+            prod_cost = inst.product_cost
+            cost_factor = (1 - prod_cost) ** (1 / 252)
+            new_ret_series = (1 + ret_series) * cost_factor - 1
+            self.details.loc[:, f"{inst.ticker} Return"] = new_ret_series
+
+
+
     @abstractmethod
     def init_details(self):
         pass
@@ -99,6 +142,8 @@ class Portfolio(object):
         """
         Generate Output Files, e.g Details Sheet or Fact Sheet
         """
+        self.details = pd.DataFrame(self.details_np, columns=self.details.columns, index=self.details.index)
+        self.details['Cumulative Portfolio Return'] = (1 + self.details["Portfolio Return"]).cumprod() - 1
         self.export_files()
         self.generate_fact_sheet()
 
@@ -106,7 +151,7 @@ class Portfolio(object):
         """
         Exports the Details Sheet.
         """
-        self.details = pd.DataFrame(self.details_np, columns=self.details.columns, index=self.details.index)
+
 
         # self.details.to_csv(self.root_path / Path(f"{self.strategy_name}_details.csv"))
         # print(f'Details Sheet exported to {self.root_path / Path(f"{self.strategy_name}_details.csv")}')

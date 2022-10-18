@@ -1,7 +1,5 @@
 from pathlib import Path
-from strategy import Strategy
-import numpy as np
-from scipy import optimize
+from strategies.strategy import Strategy
 
 
 class ThresholdOptimizer(object):

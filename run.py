@@ -1,12 +1,11 @@
-import cProfile
-import pstats
 from pathlib import Path
 
 import scipy.optimize
 
-from strategy_mvp2 import Strategy
+# from strategies.strategy_mvp2 import Strategy
+# from strategies.benchmark_monthly import Strategy
+from strategies.benchmark_quarterly import Strategy
 import numpy as np
-from scipy import optimize
 
 
 def sr_martin(pf_ret):
@@ -31,5 +30,9 @@ def f(scale_unit):
 
 
 if __name__ == "__main__":
-    res = scipy.optimize.minimize_scalar(f, bounds=(0.2, 0.25), method='bounded')
-    print(res.x)
+    # res = scipy.optimize.minimize_scalar(f, bounds=(0.2, 0.25), method='bounded')
+    # print(res.x)
+    scale_unit = 0.03
+    config_path = Path('config') / 'config.ini'
+    strategy = Strategy(config_path=config_path, scale_unit=scale_unit)
+    strategy.manage_portfolio()
