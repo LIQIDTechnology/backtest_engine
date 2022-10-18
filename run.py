@@ -4,7 +4,7 @@ from pathlib import Path
 
 import scipy.optimize
 
-from strategy import Strategy
+from strategy_mvp2 import Strategy
 import numpy as np
 from scipy import optimize
 
@@ -24,10 +24,12 @@ def f(scale_unit):
     strategy.manage_portfolio()
     pf_ret = strategy.details["Portfolio Return"].values[1:]
     sr = sr_martin(pf_ret)
+    print(f'Scale Unit: {scale_unit}')
     print(f'Threshold: {"{:.2f}".format(scale_unit*100)} %')
     print(f'Sharpe Ratio: {"{:.5f}".format(sr)}')
     return -sr
 
 
 if __name__ == "__main__":
-    f(0.03)
+    res = scipy.optimize.minimize_scalar(f, bounds=(0.2, 0.25), method='bounded')
+    print(res.x)

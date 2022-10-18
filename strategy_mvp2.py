@@ -16,6 +16,8 @@ class Strategy(Portfolio):
         super().__init__(config_path)
         self.unit3_scale = scale_unit
 
+        self.unit1_thres = {}
+        self.unit2_thres = {}
         self.unit3_thres = {}
 
         self.unit1_thres_breach = {}
@@ -64,6 +66,7 @@ class Strategy(Portfolio):
         self.ret_col_np = [self.details.columns.get_loc(col) for col in self.ret_col]
         self.pf_ret_col = self.details.columns.get_loc("Portfolio Return")
         self.rebalance_col = self.details.columns.get_loc("Rebalance?")
+
         self.unit1_thres_breach = {cluster: self.details.columns.get_loc(cluster) for cluster in self.unit1_ls}
         self.unit2_thres_breach = {cluster: self.details.columns.get_loc(cluster) for cluster in self.unit2_ls}
         self.unit3_thres_breach = {cluster: self.details.columns.get_loc(cluster) for cluster in self.unit3_ls}
@@ -105,7 +108,11 @@ class Strategy(Portfolio):
         self.unit3to2_map = dict(zip(self.instruments_table["UNIT III"], self.instruments_table["UNIT II"]))
         self.unit2to1_map = dict(zip(self.instruments_table["UNIT II"], self.instruments_table["UNIT I"]))
 
-        # THRESHOLD UNIT III
+        # THRESHOLD UNIT I-III
+        for cluster in self.unit1_ls:
+            self.unit1_thres[cluster] = float(self.config["threshold"][cluster])
+        for cluster in self.unit2_ls:
+            self.unit2_thres[cluster] = float(self.config["threshold"][cluster])
         for cluster in self.unit3_ls:
             unit2_cluster = self.unit3to2_map[cluster]
             unit2_wt = self.unit2_weights[unit2_cluster]
@@ -118,6 +125,27 @@ class Strategy(Portfolio):
 
     def check_rebal(self, t):
         bool = False
+
+        for cluster in self.unit1_ls:
+            weight = self.details_np[t-1, self.unit1_idx[cluster]].sum()
+            cluster_wt = self.unit1_weights[cluster]
+            thres = self.unit1_thres[cluster]
+            if cluster_wt - thres < weight < cluster_wt + thres:
+                self.details_np[t, self.unit1_thres_breach[cluster]] = 0
+            else:
+                self.details_np[t, self.unit1_thres_breach[cluster]] = 1
+                bool = True
+
+        for cluster in self.unit2_ls:
+            weight = self.details_np[t-1, self.unit2_idx[cluster]].sum()
+            cluster_wt = self.unit2_weights[cluster]
+            thres = self.unit2_thres[cluster]
+            if cluster_wt - thres < weight < cluster_wt + thres:
+                self.details_np[t, self.unit2_thres_breach[cluster]] = 0
+            else:
+                self.details_np[t, self.unit2_thres_breach[cluster]] = 1
+                bool = True
+
         for cluster in self.unit3_ls:
             weight = self.details_np[t-1, self.unit3_idx[cluster]].sum()
             cluster_wt = self.unit3_weights[cluster]
@@ -127,7 +155,11 @@ class Strategy(Portfolio):
             else:
                 self.details_np[t, self.unit3_thres_breach[cluster]] = 1
                 bool = True
-                self.details_np[t, self.rebalance_col] = 1
+
+        if bool:
+            self.details_np[t, self.rebalance_col] = 1
+        else:
+            self.details_np[t, self.rebalance_col] = 0
 
         return bool
 
