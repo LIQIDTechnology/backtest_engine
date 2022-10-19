@@ -4,7 +4,7 @@ import scipy.optimize
 
 # from strategies.strategy_mvp2 import Strategy
 # from strategies.benchmark_monthly import Strategy
-from strategies.benchmark_quarterly import Strategy
+from strategies.benchmarks import Strategy
 import numpy as np
 
 
