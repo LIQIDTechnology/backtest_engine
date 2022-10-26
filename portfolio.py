@@ -58,9 +58,9 @@ class Portfolio(object):
         self.pf_ret_col = None
         self.rebalance_col = None
 
-        self.unit3_ls = self.config["cluster"]["unit3"].split(",")
-        self.unit2_ls = self.config["cluster"]["unit2"].split(",")
-        self.unit1_ls = self.config["cluster"]["unit1"].split(",")
+        self.unit3_ls = list(set(inst.unit3 for inst in self.instrument_ls))
+        self.unit2_ls = list(set(inst.unit2 for inst in self.instrument_ls))
+        self.unit1_ls = list(set(inst.unit1 for inst in self.instrument_ls))
 
     def set_column_idx(self):
         """
@@ -71,7 +71,13 @@ class Portfolio(object):
         self.wts_col_np = [self.details.columns.get_loc(col) for col in self.wts_col]
         self.ret_col_np = [self.details.columns.get_loc(col) for col in self.ret_col]
         self.pf_ret_col = self.details.columns.get_loc("Portfolio Return")
-        self.rebalance_col = self.details.columns.get_loc("Rebalance?")
+        self.unit1_col = [self.details.columns.get_loc(col) for col in self.unit1_ls]
+        self.unit2_col = [self.details.columns.get_loc(col) for col in self.unit2_ls]
+        self.unit3_col = [self.details.columns.get_loc(col) for col in self.unit3_ls]
+        self.unit1_rebalance_col = self.details.columns.get_loc("UNIT1 Rebalance")
+        self.unit2_rebalance_col = self.details.columns.get_loc("UNIT2 Rebalance")
+        self.unit3_rebalance_col = self.details.columns.get_loc("UNIT3 Rebalance")
+        self.rebalance_col = self.details.columns.get_loc("Rebalance")
 
     def set_cluster_column_idx(self):
         """
@@ -111,14 +117,9 @@ class Portfolio(object):
         self.unit3to2_map = dict(zip(self.instruments_table["UNIT III"], self.instruments_table["UNIT II"]))
         self.unit2to1_map = dict(zip(self.instruments_table["UNIT II"], self.instruments_table["UNIT I"]))
 
+    @abstractmethod
     def set_unit3_threshold(self):
-        # THRESHOLD UNIT III
-        for cluster in self.unit3_ls:
-            unit2_cluster = self.unit3to2_map[cluster]
-            unit2_wt = self.unit2_weights[unit2_cluster]
-            unit3_wt = self.unit3_weights[cluster]
-            self.unit3_thres[cluster] = unit3_wt / unit2_wt * self.unit3_scale
-
+        pass
 
     def init_instruments(self) -> list:
         """
@@ -154,8 +155,8 @@ class Portfolio(object):
             self.routine(day_idx)
 
         self.go_to_sleep()
-        kpi_dic = self.get_kpi()
-        return kpi_dic
+        # kpi_dic = self.get_kpi()
+        # return kpi_dic
 
     def get_kpi(self):
         days_per_year = 252
@@ -167,7 +168,7 @@ class Portfolio(object):
         sortino = 3
 
         # Max Drawdown
-        levels = pd.Series(1.0).append(self.details["Cumulative Portfolio Return"][1:]+1)
+        levels = pd.concat([pd.Series(1.0), self.details["Cumulative Portfolio Return"][1:]+1])
         max = np.maximum.accumulate(levels)
         max_drawdown = (levels / max - 1).min()
         mdd = max_drawdown
@@ -178,17 +179,18 @@ class Portfolio(object):
         vola = std_pa
 
         # Total Return
-        tot_ret = (self.details.loc[self.end_date, "Cumulative Portfolio Return"] - 1) * 100
+        tot_ret = (self.details.loc[self.end_date, "Cumulative Portfolio Return"]) * 100
         tot_ret_str = f'{"{:.2f}".format(tot_ret)} %'
         kpi_dic = {"Rebalancing Count": rebal_count,
                    "Annualized Volatility": vola,
                    "Maximum Drawdown": mdd,
-                   "Total Return": tot_ret}
+                   "Total Return": tot_ret_str}
         return kpi_dic
 
     def wake_up(self):
         self.init_details()
         self.apply_product_cost()
+
         self.unit1_thres_breach = {cluster: self.details.columns.get_loc(cluster) for cluster in self.unit1_ls}
         self.unit2_thres_breach = {cluster: self.details.columns.get_loc(cluster) for cluster in self.unit2_ls}
         self.unit3_thres_breach = {cluster: self.details.columns.get_loc(cluster) for cluster in self.unit3_ls}
@@ -205,7 +207,7 @@ class Portfolio(object):
         self.ret_col = [f"{inst.ticker} Return" for inst in self.instrument_ls]
 
         inst_ls = [*self.inst_col, *self.ret_col, *self.wts_col, *self.unit3_ls, *self.unit2_ls, *self.unit1_ls]
-        other_ls = ["Rebalance?", "Portfolio Return"]
+        other_ls = ["UNIT1 Rebalance", "UNIT2 Rebalance", "UNIT3 Rebalance", "Rebalance", "Portfolio Return"]
 
         self.details = pd.DataFrame(columns=[*inst_ls, *other_ls])
 
@@ -270,8 +272,6 @@ class Portfolio(object):
         self.details_np[t, self.pf_ret_col] = pf_ret
         return pf_ret
 
-
-
     @abstractmethod
     def check_rebal(self, t):
         pass
@@ -289,10 +289,9 @@ class Portfolio(object):
         """
         Exports the Details Sheet.
         """
-
-
-        # self.details.to_csv(self.root_path / Path(f"{self.strategy_name}_details.csv"))
-        # print(f'Details Sheet exported to {self.root_path / Path(f"{self.strategy_name}_details.csv")}')
+        self.details.to_csv(self.root_path / Path(f"{self.strategy_name}_details.csv"))
+        print(f'Details Sheet exported to {self.root_path / Path(f"{self.strategy_name}_details.csv")}')
+        pass
 
     def generate_fact_sheet(self):
         """

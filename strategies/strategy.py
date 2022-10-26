@@ -16,19 +16,31 @@ class Strategy(Portfolio):
         super().__init__(config_path)
         self.unit3_scale = scale_unit
 
+    def set_unit3_threshold(self):
+        # THRESHOLD UNIT III
+        for cluster in self.unit3_ls:
+            unit2_cluster = self.unit3to2_map[cluster]
+            unit2_wt = self.unit2_weights[unit2_cluster]
+            unit3_wt = self.unit3_weights[cluster]
+            self.unit3_thres[cluster] = unit3_wt / unit2_wt * self.unit3_scale
+
     def check_rebal(self, t):
-        bool = False
+
         for cluster in self.unit3_ls:
             weight = self.details_np[t-1, self.unit3_idx[cluster]].sum()
             cluster_wt = self.unit3_weights[cluster]
             thres = self.unit3_thres[cluster]
             if cluster_wt - thres < weight < cluster_wt + thres:
-                self.details_np[t, self.unit3_thres_breach[cluster]] = 0
+                # self.details_np[t, self.unit3_thres_breach[cluster]] = None
+                pass
             else:
                 self.details_np[t, self.unit3_thres_breach[cluster]] = 1
-                bool = True
-                self.details_np[t, self.rebalance_col] = 1
-        return bool
+                self.details_np[t, self.unit3_rebalance_col] = 1
+
+        rebal_bool = True if np.nansum(self.details_np[t, self.unit3_col]) >= 1 else False
+        self.details_np[t, self.rebalance_col] = 1 if rebal_bool else None
+
+        return rebal_bool
 
     def routine(self, t):
         self.reset_weights(t - 1) if self.details.index[t] == self.start_date else None  # INIT WEIGHTS
