@@ -21,6 +21,7 @@ class Portfolio(object):
         # Portfolio CONFIGURATION
         self.calendar = Calendar(self.config["strategy"]["calendar"])
         self.strategy_name = self.config["strategy"]["strategy name"]
+        self.strategy_risk_class = self.config["strategy"]["strategy risk class"]
         self.start_date = dt.datetime.strptime(self.config["strategy"]["start date"], "%Y-%m-%d").date()
         self.end_date = dt.datetime.strptime(self.config["strategy"]["end date"], "%Y-%m-%d").date()
         self.trading_cost = float(self.config["strategy"]["trading costs"])
@@ -32,6 +33,8 @@ class Portfolio(object):
         self.details = pd.DataFrame([])
         self.details_np = None
 
+        self.unit1_thres = {}
+        self.unit2_thres = {}
         self.unit3_thres = {}
 
         self.unit1_thres_breach = {}
@@ -56,6 +59,12 @@ class Portfolio(object):
         self.wts_col_np = None
         self.ret_col_np = None
         self.pf_ret_col = None
+        self.unit1_col = None
+        self.unit2_col = None
+        self.unit3_col = None
+        self.unit1_rebalance_col = None
+        self.unit2_rebalance_col = None
+        self.unit3_rebalance_col = None
         self.rebalance_col = None
 
         self.unit3_ls = list(set(inst.unit3 for inst in self.instrument_ls))
@@ -103,19 +112,27 @@ class Portfolio(object):
     def set_cluster_weight(self):
         # WEIGHTS BY UNIT I-III
         for cluster in self.unit1_ls:
-            wts_sum = self.instruments_table[self.instruments_table["UNIT I"] == cluster]["Weight"].sum()
+            wts_sum = self.instruments_table[self.instruments_table["UNIT I"] == cluster][self.strategy_risk_class].sum()
             self.unit1_weights[cluster] = wts_sum
         for cluster in self.unit2_ls:
-            wts_sum = self.instruments_table[self.instruments_table["UNIT II"] == cluster]["Weight"].sum()
+            wts_sum = self.instruments_table[self.instruments_table["UNIT II"] == cluster][self.strategy_risk_class].sum()
             self.unit2_weights[cluster] = wts_sum
         for cluster in self.unit3_ls:
-            wts_sum = self.instruments_table[self.instruments_table["UNIT III"] == cluster]["Weight"].sum()
+            wts_sum = self.instruments_table[self.instruments_table["UNIT III"] == cluster][self.strategy_risk_class].sum()
             self.unit3_weights[cluster] = wts_sum
 
     def set_unit_mapping(self):
         # UNIT I-III MAPPINGS
         self.unit3to2_map = dict(zip(self.instruments_table["UNIT III"], self.instruments_table["UNIT II"]))
         self.unit2to1_map = dict(zip(self.instruments_table["UNIT II"], self.instruments_table["UNIT I"]))
+
+    @abstractmethod
+    def set_unit1_threshold(self):
+        pass
+
+    @abstractmethod
+    def set_unit2_threshold(self):
+        pass
 
     @abstractmethod
     def set_unit3_threshold(self):
@@ -125,15 +142,17 @@ class Portfolio(object):
         """
         Creates a list with Instrument Objects from Instruments Table selecting the Risk
         """
-        keep_col = self.config["instruments"]["configuration"].split(",")
-        weight_col = [self.config["strategy"]["strategy risk class"]]
-        keep_col = [*keep_col, *weight_col]
-        instruments_table = self.instruments_table.loc[:, keep_col]
-        instruments_table.rename(columns={weight_col[0]: "Weight"}, inplace=True)
-        instruments_table = instruments_table.fillna(0)
-        self.instruments_table = instruments_table[instruments_table["Weight"] != 0]
+        # keep_col = self.config["instruments"]["configuration"].split(",")
+        # weight_col = [self.config["strategy"]["strategy risk class"]]
+        # keep_col = [*keep_col, *weight_col]
+        # instruments_table = self.instruments_table.loc[:, keep_col]
+        # instruments_table.rename(columns={weight_col[0]: "Weight"}, inplace=True)
+        # instruments_table = instruments_table[instruments_table["Weight"] != 0]
+        self.instruments_table = self.instruments_table.fillna(0)
+        self.instruments_table = self.instruments_table[self.instruments_table[self.strategy_risk_class] != 0]
 
-        instrument_ls = [Instrument(self.instruments_table.loc[inst, :]) for inst in self.instruments_table.index]
+        instrument_ls = [Instrument(self.instruments_table.loc[inst, :], self.strategy_risk_class)
+                         for inst in self.instruments_table.index]
         return instrument_ls
 
     @staticmethod
@@ -155,41 +174,69 @@ class Portfolio(object):
             self.routine(day_idx)
 
         self.go_to_sleep()
-        # kpi_dic = self.get_kpi()
-        # return kpi_dic
+        kpi_dic = self.get_kpi()
+        return kpi_dic
 
     def get_kpi(self):
         days_per_year = 252
 
         # Count of Rebalancing
-        rebal_count = self.details.loc[:,"Rebalance?"].sum()
+        rebal_count_unit1 = self.details.loc[:, "UNIT1 Rebalance"].sum()
+        rebal_count_unit2 = self.details.loc[:, "UNIT2 Rebalance"].sum()
+        rebal_count_unit3 = self.details.loc[:, "UNIT3 Rebalance"].sum()
+        rebal_count = self.details.loc[:, "Rebalance"].sum()
 
-        sharpe = 3
-        sortino = 3
+        # Sharpe Ratio Proxy
+        pf_ret = self.details["Portfolio Return"].values[1:]
+        avg_ret = np.average(pf_ret)
+        sr_1 = ((1 + avg_ret) ** days_per_year) - 1
+        stdev_pf_ret = np.std(pf_ret, ddof=1)
+        sr_2 = stdev_pf_ret * np.sqrt(days_per_year)
+        sr = sr_1 / sr_2
+        sr_str = f'{"{:.5f}".format(sr)}'
 
         # Max Drawdown
         levels = pd.concat([pd.Series(1.0), self.details["Cumulative Portfolio Return"][1:]+1])
         max = np.maximum.accumulate(levels)
         max_drawdown = (levels / max - 1).min()
         mdd = max_drawdown
+        mdd_str = f'{"{:.2f}".format(mdd * 100)} %'
+
+        ## Average annualised return
+        arth_avg_pd = pf_ret.mean()
+        arth_avg_pa = (arth_avg_pd + 1) ** days_per_year - 1
+        arth_avg_pd_str = f'{"{:.4f}".format(arth_avg_pd * 100)} %'
 
         # Annual Return Vola
         array = np.array(self.details["Portfolio Return"][1:])
         std_pa = (((array + 1) ** 2).mean() ** days_per_year - (array + 1).mean() ** (2 * days_per_year)) ** (1 / 2)
         vola = std_pa
+        vola_str = f'{"{:.2f}".format(vola * 100)} %'
 
         # Total Return
-        tot_ret = (self.details.loc[self.end_date, "Cumulative Portfolio Return"]) * 100
-        tot_ret_str = f'{"{:.2f}".format(tot_ret)} %'
-        kpi_dic = {"Rebalancing Count": rebal_count,
-                   "Annualized Volatility": vola,
-                   "Maximum Drawdown": mdd,
-                   "Total Return": tot_ret_str}
-        return kpi_dic
+        tot_ret = (self.details.loc[self.end_date, "Cumulative Portfolio Return"])
+        tot_ret_str = f'{"{:.2f}".format(tot_ret* 100)} %'
+
+        kpi_dic = {"Strategy": self.strategy_name,
+                   "Total Return": tot_ret_str,
+                   "Sharpe Ratio Proxy": sr_str,
+                   "Rebalancing Count": rebal_count,
+                   "Rebalancing Count UNIT1": rebal_count_unit1,
+                   "Rebalancing Count UNIT2": rebal_count_unit2,
+                   "Rebalancing Count UNIT3": rebal_count_unit3,
+                   "Maximum Drawdown": mdd_str,
+                   "Average annualised return": arth_avg_pd_str,
+                   "Annualized Volatility": vola_str}
+        weight1_dic = {cluster: self.details_np[-1, self.unit1_idx[cluster]].sum() for cluster in self.unit1_ls}
+        weight2_dic = {cluster: self.details_np[-1, self.unit2_idx[cluster]].sum() for cluster in self.unit2_ls}
+        weight3_dic = {cluster: self.details_np[-1, self.unit3_idx[cluster]].sum() for cluster in self.unit3_ls}
+
+        ret_dic = {**kpi_dic, **weight1_dic, **weight2_dic, **weight3_dic}
+        return ret_dic
 
     def wake_up(self):
         self.init_details()
-        self.apply_product_cost()
+        # self.apply_product_cost()
 
         self.unit1_thres_breach = {cluster: self.details.columns.get_loc(cluster) for cluster in self.unit1_ls}
         self.unit2_thres_breach = {cluster: self.details.columns.get_loc(cluster) for cluster in self.unit2_ls}
@@ -199,6 +246,8 @@ class Portfolio(object):
         self.set_cluster_column_idx()
         self.set_cluster_weight()
         self.set_unit_mapping()
+        self.set_unit1_threshold()
+        self.set_unit2_threshold()
         self.set_unit3_threshold()
 
     def init_details(self):

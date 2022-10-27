@@ -3,7 +3,6 @@ import scipy
 
 from strategies.strategy import Strategy
 import numpy as np
-import gurobipy as gb
 
 class ThresholdOptimizer(object):
 
@@ -19,14 +18,27 @@ class ThresholdOptimizer(object):
         return sr
 
     def objective(self, scale_unit):
-        scale_unit_jo = scale_unit[0]
+        print(scale_unit)
+        scale_unit = scale_unit[0]
         config_path = Path('config') / 'config.ini'
-        strategy = Strategy(config_path=config_path, scale_unit=scale_unit_jo)
+        strategy = Strategy(config_path=config_path, scale_unit=scale_unit)
 
         strategy.manage_portfolio()
         pf_ret = strategy.details["Portfolio Return"].values[1:]
         sr = self.sr_martin(pf_ret)
-        print(f'Scale Unit: {scale_unit_jo}', f'Sharpe Ratio: {"{:.5f}".format(sr)}')
+        print(f'Scale Unit: {scale_unit}', f'Sharpe Ratio: {"{:.5f}".format(sr)}')
+        # print(f'Threshold: {"{:.2f}".format(scale_unit * 100)} %')
+        # print(f'Sharpe Ratio: {"{:.5f}".format(sr)}')
+        return -sr
+
+    def objective_scalar(self, scale_unit):
+        config_path = Path('config') / 'config.ini'
+        strategy = Strategy(config_path=config_path, scale_unit=scale_unit)
+
+        strategy.manage_portfolio()
+        pf_ret = strategy.details["Portfolio Return"].values[1:]
+        sr = self.sr_martin(pf_ret)
+        print(f'Scale Unit: {scale_unit}', f'Sharpe Ratio: {"{:.5f}".format(sr)}')
         # print(f'Threshold: {"{:.2f}".format(scale_unit * 100)} %')
         # print(f'Sharpe Ratio: {"{:.5f}".format(sr)}')
         return -sr
@@ -35,24 +47,22 @@ class ThresholdOptimizer(object):
         # self.f(0.03)
         init_wt = 0.1
         # b = (0, 1)
-        b = (0, 0.5)
+        b = (0, 0.1)
         bnds = [b, b]
+        self.objective_scalar(0.089)
+        res = scipy.optimize.minimize_scalar(self.objective_scalar, bounds=b, method="bounded")
 
-        # bnds = (b)
-        # res = scipy.optimize.minimize(self.objective, init_wt, method="SLSQP", bounds=bnds)
-        # res = scipy.optimize.minimize_scalar(self.objective, bounds=bnds, method="golden")
-        res = scipy.optimize.brute(self.objective, ranges=bnds)
-        res = scipy.optimize.minimize(self.objective, init_wt, method="nelder-mead")
-        res = scipy.optimize.dual_annealing(self.objective, bounds=bnds, maxiter=100)
+        self.objective_scalar(0.3204861292689471)
         sr_max = 0
-        k_max = 0
-        for k in range(0, 300):
-            res = - self.objective(k / 1000)
+        step_max = 0
+        for step in range(0, 300):
+            res = - self.objective_scalar(step / 1000)
+            step_max = step / 1000 if sr_max < res else step_max
             sr_max = res if sr_max < res else sr_max
-            k_max = k / 1000 if sr_max < res else k_max
+            print(step_max)
 
             # print(k/1000)
-        self.objective(120 / 1000)
+        - self.objective(120 / 1000)
 
         res = scipy.optimize.minimize(self.objective, init_wt, method="nelder-mead")
         res = scipy.optimize.minimize(self.objective, init_wt, bounds=bnds, method='SLSQP')  # cannot use bounds, now can

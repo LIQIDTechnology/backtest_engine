@@ -41,15 +41,15 @@ class Benchmark(Portfolio):
                     weight = self.details_np[t-1, self.unit1_idx[cluster]].sum()
                     cluster_wt = self.unit1_weights[cluster]
                     thres = 0.05
-
                     if cluster_wt - thres < weight < cluster_wt + thres:
-                        self.details_np[t, self.unit1_thres_breach[cluster]] = 0
-                        rebal_bool = False
+                        pass
                     else:
                         self.details_np[t, self.unit1_thres_breach[cluster]] = 1
+                        self.details_np[t, self.unit1_rebalance_col] = 1
                         self.details_np[t, self.rebalance_col] = 1
-                        rebal_bool = True
-        self.details_np[t, self.rebalance_col] = 1 if rebal_bool else 0
+                rebal_bool = True if np.nansum(self.details_np[t, self.unit1_col]) >= 1 else False
+                self.details_np[t, self.rebalance_col] = 1 if rebal_bool else None
+        self.details_np[t, self.rebalance_col] = 1 if rebal_bool else None
         return rebal_bool
 
     def routine(self, t):
