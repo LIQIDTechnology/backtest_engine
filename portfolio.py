@@ -17,6 +17,8 @@ class Portfolio(object):
     def __init__(self, config_path: Union[str, Path]):
         self.config = self.load_config(config_path)
         self.root_path = self.config["paths"]["root_path"]
+        self.instrument_path = self.config["paths"]["instrument_path"]
+        self.prices_path = self.config["paths"]["prices_path"]
 
         # Portfolio CONFIGURATION
         self.calendar = Calendar(self.config["strategy"]["calendar"])
@@ -25,10 +27,11 @@ class Portfolio(object):
         self.start_date = dt.datetime.strptime(self.config["strategy"]["start date"], "%Y-%m-%d").date()
         self.end_date = dt.datetime.strptime(self.config["strategy"]["end date"], "%Y-%m-%d").date()
         self.trading_cost = float(self.config["strategy"]["trading costs"])
+        self.liqid_fee = float(self.config["strategy"]["liqid fee"])
 
         # PORTFOLIO MANAGEMENT
-        self.prices_table = self.init_prices(path=self.root_path / Path("prices.csv"), index_col="Date")
-        self.instruments_table = pd.read_csv(self.root_path / Path("instruments.csv"), index_col="Instrument Ticker")
+        self.prices_table = self.init_prices(self.prices_path, index_col="Date")
+        self.instruments_table = pd.read_csv(self.instrument_path, index_col="Instrument Ticker")
         self.instrument_ls = self.init_instruments()
         self.details = pd.DataFrame([])
         self.details_np = None
@@ -168,6 +171,8 @@ class Portfolio(object):
         end_date = self.end_date if self.end_date is not None else dt.date.today()
         bday_range = self.calendar.bday_range(start=self.start_date, end=end_date)
 
+
+
         self.details_np = self.details.values  # Convert DataFrame into Numpy Matrix
 
         for day_idx in range(1, len(bday_range)+1):
@@ -236,7 +241,7 @@ class Portfolio(object):
 
     def wake_up(self):
         self.init_details()
-        # self.apply_product_cost()
+        self.apply_product_cost()
 
         self.unit1_thres_breach = {cluster: self.details.columns.get_loc(cluster) for cluster in self.unit1_ls}
         self.unit2_thres_breach = {cluster: self.details.columns.get_loc(cluster) for cluster in self.unit2_ls}
@@ -268,17 +273,16 @@ class Portfolio(object):
         inst_col_ls = [inst.ticker for inst in self.instrument_ls]
         self.details = pd.concat([self.details, self.prices_table.loc[bday_range, inst_col_ls]])
 
+
+
         # Deduce Return Table in Details Sheet
-        # TODO: to be replaced
-        inst_ret_col_ls = [f"{inst.ticker} Return" for inst in self.instrument_ls]
-        price_mat_t = np.array(self.details.loc[self.details.index[1]:self.details.index[-1], inst_col_ls])
-        price_mat_tm1 = np.array(self.details.loc[self.details.index[0]:self.details.index[-2], inst_col_ls])
-        ret_mat = price_mat_t / price_mat_tm1 - 1
-        ret_df = pd.DataFrame(ret_mat)
-        ret_df.columns = inst_ret_col_ls
-        ret_df.index = bday_range[1:]
-        self.details.loc[bday_range[1:], inst_ret_col_ls] = ret_df
-        self.details.loc[:, "EUR Curncy Return"] = 0
+        rename_dic = {col: f"{col} Return" for col in self.inst_col}
+        ret_mat = self.details.loc[:, self.inst_col] - 1
+        ret_mat.rename(columns=rename_dic, inplace=True)
+        self.details.loc[:, self.ret_col] = ret_mat
+        self.details.loc[:, "LS01TREU Index Return"] = 0
+
+        self.details.loc[:, self.ret_col] = self.details.loc[:, self.ret_col].fillna(0)
 
     def apply_product_cost(self):
         # Apply Product Cost
@@ -312,11 +316,19 @@ class Portfolio(object):
         ret_array = self.details_np[t, self.ret_col_np]
         pf_ret = np.dot(wts_array_tm1, ret_array)
 
+        # Apply Trading Costs
         if self.details.index[t] > self.start_date and self.check_rebal(t-1):
             wts_array_tm2 = self.details_np[t-2, self.wts_col_np]
             volume_traded = sum(abs(wts_array_tm2-wts_array_tm1))
             trading_cost = volume_traded * self.trading_cost
             pf_ret = pf_ret - trading_cost
+
+        # Apply LIQID Fee
+        month_today = self.details.index[t].month
+        month_ytd = self.details.index[t-1].month
+        if month_today != month_ytd and month_today in (3, 6, 9, 12):
+            quarterly_fee_factor = (1 - self.liqid_fee) ** (1 / 63)
+            pf_ret = pf_ret * quarterly_fee_factor
 
         self.details_np[t, self.pf_ret_col] = pf_ret
         return pf_ret

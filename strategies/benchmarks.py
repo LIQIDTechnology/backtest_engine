@@ -56,3 +56,8 @@ class Benchmark(Portfolio):
         self.reset_weights(t - 1) if self.details.index[t] == self.start_date else None  # INIT WEIGHTS
         self.calc_portfolio_ret(t)
         self.reset_weights(t) if self.check_rebal(t) else self.calc_weights(t)
+
+        # (self.details[self.inst_col].notna().idxmax())
+
+
+

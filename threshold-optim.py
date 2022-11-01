@@ -4,6 +4,7 @@ import scipy
 from strategies.strategy import Strategy
 import numpy as np
 
+
 class ThresholdOptimizer(object):
 
     def __init__(self):
@@ -47,10 +48,24 @@ class ThresholdOptimizer(object):
         # self.f(0.03)
         init_wt = 0.1
         # b = (0, 1)
-        b = (0, 0.1)
-        bnds = [b, b]
-        self.objective_scalar(0.089)
-        res = scipy.optimize.minimize_scalar(self.objective_scalar, bounds=b, method="bounded")
+        b = (0.00, 0.05)
+        b1 = (0.05, 0.1)
+        b2 = (0.015, 0.2)
+        b3 = (0.25, 0.3)
+        b4 = (0.3, 0.35)
+        # bnds = [b, b]
+        bracket_ls = [b, b1, b2, b3, b4]
+        result_list = []
+        for brackets in bracket_ls:
+            res = scipy.optimize.minimize_scalar(self.objective_scalar, bounds=brackets, method="bounded")
+            result_list.append([brackets, res.x])
+        # self.objective_scalar(0.089)
+
+        0.03305355721784304
+        0.08646006000121585
+        0.19999577787513406
+        0.2999946842693384
+        0.34999468501095826
 
         self.objective_scalar(0.3204861292689471)
         sr_max = 0
@@ -68,7 +83,6 @@ class ThresholdOptimizer(object):
         res = scipy.optimize.minimize(self.objective, init_wt, bounds=bnds, method='SLSQP')  # cannot use bounds, now can
 
         res = scipy.optimize.basinhopping(self.objective, init_wt,)
-
 
         res
 

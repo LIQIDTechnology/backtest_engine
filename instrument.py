@@ -5,7 +5,6 @@ class Instrument(object):
         self.name = instrument["Instrument Name"]
         self.type = instrument["Type"]  # equity, bond, index, exchange traded fund, open fund
         self.currency = instrument["Currency"]  # Currency
-        self.cost = None  # TER p.a.
         self.weight = instrument[risk_class]
         self.unit1 = instrument["UNIT I"]
         self.unit2 = instrument["UNIT II"]
@@ -13,7 +12,7 @@ class Instrument(object):
         self.product_cost = instrument["Product Cost"]
 
     def __str__(self):
-        return f"Instrument({self.type}/{self.ticker}/{self.name}/{self.currency}/{self.weight}/{self.unit1}/{self.unit2}/{self.unit3})"
+        return f"Instrument({self.type}/{self.ticker}/{self.currency}/{self.weight}/{self.unit1}/{self.unit2}/{self.unit3}/{self.name})"
 
     def __repr__(self):
-        return f"Instrument({self.type}/{self.ticker}/{self.name}/{self.currency}/{self.weight}/{self.unit1}/{self.unit2}/{self.unit3})"
+        return f"Instrument({self.type}/{self.ticker}/{self.currency}/{self.weight}/{self.unit1}/{self.unit2}/{self.unit3}/{self.name})"
