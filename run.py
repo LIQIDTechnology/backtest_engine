@@ -20,7 +20,7 @@ if __name__ == "__main__":
     strategy3 = Strategy(config_path=Path('config') / 'config.ini', scale_unit=0.19999577787513406)
     strategy4 = Strategy(config_path=Path('config') / 'config.ini', scale_unit=0.2999946842693384)
     strategy5 = Strategy(config_path=Path('config') / 'config.ini', scale_unit=0.34999468501095826)
-
+    #
     kpi_dic1 = benchmark_unit1_only.manage_portfolio()
     kpi_dic2 = benchmark_never.manage_portfolio()
     kpi_dic3 = benchmark_monthly.manage_portfolio()
@@ -39,9 +39,14 @@ if __name__ == "__main__":
     kpi4_df = pd.DataFrame([kpi_dic4])
     kpi5_df = pd.DataFrame([kpi_dic5])
     kpi6_df = pd.DataFrame([kpi_dic6])
+    kpi7_df = pd.DataFrame([kpi_dic7])
+    kpi8_df = pd.DataFrame([kpi_dic8])
+    kpi9_df = pd.DataFrame([kpi_dic9])
+    kpi10_df = pd.DataFrame([kpi_dic10])
+    kpi11_df = pd.DataFrame([kpi_dic11])
 
     # kpi = pd.concat([kpi1_df, kpi2_df, kpi3_df, kpi4_df])
-    kpi = pd.concat([kpi1_df, kpi2_df, kpi3_df, kpi4_df, kpi5_df, kpi6_df])
-    folderpath = Path("/Volumes/GoogleDrive/My Drive/0003_QPLIX/004_Backtest Engine/input")
+    kpi = pd.concat([kpi1_df, kpi2_df, kpi3_df, kpi4_df, kpi5_df, kpi6_df, kpi7_df, kpi8_df, kpi9_df, kpi10_df, kpi11_df])
+    folderpath = Path("/Volumes/GoogleDrive/My Drive/0003_QPLIX/004_Backtest Engine/")
     filename = "kpi_summary.csv"
     kpi.to_csv(folderpath / filename)

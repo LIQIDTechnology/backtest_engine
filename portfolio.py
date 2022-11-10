@@ -30,9 +30,9 @@ class Portfolio(object):
         self.liqid_fee = float(self.config["strategy"]["liqid fee"])
 
         # PORTFOLIO MANAGEMENT
-        self.prices_table = self.init_prices(self.prices_path, index_col="Date")
         self.instruments_table = pd.read_csv(self.instrument_path, index_col="Instrument Ticker")
         self.instrument_ls = self.init_instruments()
+        self.prices_table = self.init_prices(self.prices_path, index_col="Date")
         self.details = pd.DataFrame([])
         self.details_np = None
 
@@ -158,12 +158,20 @@ class Portfolio(object):
                          for inst in self.instruments_table.index]
         return instrument_ls
 
-    @staticmethod
-    def init_prices(path: Path, index_col: str) -> pd.DataFrame:
+    def init_prices(self, path: Path, index_col: str) -> pd.DataFrame:
         tbl = pd.read_csv(path)
         tbl[index_col] = tbl[index_col].apply(lambda x: dt.datetime.strptime(x, "%Y-%m-%d").date())
         tbl = tbl.set_index(index_col)
-        return tbl
+
+        price_ret_df = tbl.loc[self.start_date:, [inst.ticker for inst in self.instrument_ls]]
+
+        # SUBSTITUTE
+        for inst in self.instrument_ls:
+            if inst.substitute_bool and inst.available_from > self.start_date:
+                end_date = self.end_date if inst.available_from > self.end_date \
+                    else inst.available_from + dt.timedelta(days=-1)
+                price_ret_df.loc[self.start_date:end_date, inst.ticker] = tbl.loc[self.start_date:end_date, inst.substitute_ticker]
+        return price_ret_df
 
     def manage_portfolio(self):
         self.wake_up()
@@ -171,11 +179,9 @@ class Portfolio(object):
         end_date = self.end_date if self.end_date is not None else dt.date.today()
         bday_range = self.calendar.bday_range(start=self.start_date, end=end_date)
 
-
-
         self.details_np = self.details.values  # Convert DataFrame into Numpy Matrix
 
-        for day_idx in range(1, len(bday_range)+1):
+        for day_idx in range(1, len(bday_range)):
             self.routine(day_idx)
 
         self.go_to_sleep()
@@ -266,23 +272,21 @@ class Portfolio(object):
         self.details = pd.DataFrame(columns=[*inst_ls, *other_ls])
 
         end_date = self.end_date if self.end_date is not None else dt.date.today()
-        start_date = self.calendar.bday_add(self.start_date, days=-1)
+        start_date = self.calendar.bday_add(self.start_date, days=0)
         bday_range = self.calendar.bday_range(start=start_date, end=end_date)
 
         # Import Prices Table into Details Sheet
         inst_col_ls = [inst.ticker for inst in self.instrument_ls]
         self.details = pd.concat([self.details, self.prices_table.loc[bday_range, inst_col_ls]])
 
-
-
         # Deduce Return Table in Details Sheet
         rename_dic = {col: f"{col} Return" for col in self.inst_col}
         ret_mat = self.details.loc[:, self.inst_col] - 1
         ret_mat.rename(columns=rename_dic, inplace=True)
         self.details.loc[:, self.ret_col] = ret_mat
-        self.details.loc[:, "LS01TREU Index Return"] = 0
+        # self.details.loc[:, "LS01TREU Index Return"] = 0
 
-        self.details.loc[:, self.ret_col] = self.details.loc[:, self.ret_col].fillna(0)
+        # self.details.loc[:, self.ret_col] = self.details.loc[:, self.ret_col].fillna(0)
 
     def apply_product_cost(self):
         # Apply Product Cost
@@ -341,6 +345,7 @@ class Portfolio(object):
         """
         Generate Output Files, e.g Details Sheet or Fact Sheet
         """
+        self.details_np[0, self.pf_ret_col] = 0
         self.details = pd.DataFrame(self.details_np, columns=self.details.columns, index=self.details.index)
         self.details['Cumulative Portfolio Return'] = (1 + self.details["Portfolio Return"]).cumprod() - 1
         self.export_files()
