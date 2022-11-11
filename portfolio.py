@@ -2,7 +2,6 @@ import configparser
 from pathlib import Path
 from typing import Union
 from abc import abstractmethod
-from loguru import logger
 import datetime as dt
 
 import numpy as np
@@ -13,14 +12,21 @@ from instrument import Instrument
 
 
 class Portfolio(object):
+    """
+    Portfolio Class containing necessary methods for any Strategy
+
+    """
 
     def __init__(self, config_path: Union[str, Path]):
+        """
+        Declaring variables upon Object Initialization
+        """
         self.config = self.load_config(config_path)
-        self.root_path = self.config["paths"]["root_path"]
-        self.instrument_path = self.config["paths"]["instrument_path"]
-        self.prices_path = self.config["paths"]["prices_path"]
+        self.root_path = Path(self.config["paths"]["root_path"])
+        self.instrument_path = Path(self.config["paths"]["instrument_path"])
+        self.prices_path = Path(self.config["paths"]["prices_path"])
 
-        # Portfolio CONFIGURATION
+        # PORTFOLIO CONFIGURATION
         self.calendar = Calendar(self.config["strategy"]["calendar"])
         self.strategy_name = self.config["strategy"]["strategy name"]
         self.strategy_risk_class = self.config["strategy"]["strategy risk class"]
@@ -29,7 +35,7 @@ class Portfolio(object):
         self.trading_cost = float(self.config["strategy"]["trading costs"])
         self.liqid_fee = float(self.config["strategy"]["liqid fee"])
 
-        # PORTFOLIO MANAGEMENT
+        # PORTFOLIO MANAGEMENT (Could also be moved into Wake Up Cycle)
         self.instruments_table = pd.read_csv(self.instrument_path, index_col="Instrument Ticker")
         self.instrument_ls = self.init_instruments()
         self.prices_table = self.init_prices(self.prices_path, index_col="Date")
@@ -77,7 +83,10 @@ class Portfolio(object):
     def set_column_idx(self):
         """
         This function contains the column (indices) of the details sheet.
+        Numpy Matrices can only be read & queried via rows and columns
+        DataFrames can be also read & queried via row name and column names
 
+        As the calculation is run over numpy matrices is necessary to have a column name to index mapping
         """
         self.inst_col_np = [self.details.columns.get_loc(col) for col in self.inst_col]
         self.wts_col_np = [self.details.columns.get_loc(col) for col in self.wts_col]
@@ -95,7 +104,6 @@ class Portfolio(object):
         """
         This function curates the cluster dictionaries,
         which contain the columns (indices) for each cluster (UNIT I-III).
-
         """
         def create_map(instrument_ls, cluster, details_df, level):
             cluster_idx = {}
@@ -113,7 +121,9 @@ class Portfolio(object):
         self.unit3_idx = create_map(self.instrument_ls, self.unit3_ls, self.details, 3)
 
     def set_cluster_weight(self):
-        # WEIGHTS BY UNIT I-III
+        """
+        This function sets the weight on Cluster Level
+        """
         for cluster in self.unit1_ls:
             wts_sum = self.instruments_table[self.instruments_table["UNIT I"] == cluster][self.strategy_risk_class].sum()
             self.unit1_weights[cluster] = wts_sum
@@ -125,32 +135,39 @@ class Portfolio(object):
             self.unit3_weights[cluster] = wts_sum
 
     def set_unit_mapping(self):
-        # UNIT I-III MAPPINGS
+        """
+        This function creates mapping dictionaries between
+        Unit III - Unit II
+        Unit II - Unit I
+        """
         self.unit3to2_map = dict(zip(self.instruments_table["UNIT III"], self.instruments_table["UNIT II"]))
         self.unit2to1_map = dict(zip(self.instruments_table["UNIT II"], self.instruments_table["UNIT I"]))
 
     @abstractmethod
     def set_unit1_threshold(self):
+        """
+        This function has to implemented in the child class
+        """
         pass
 
     @abstractmethod
     def set_unit2_threshold(self):
+        """
+        This function has to implemented in the child class
+        """
         pass
 
     @abstractmethod
     def set_unit3_threshold(self):
+        """
+        This function has to implemented in the child class
+        """
         pass
 
     def init_instruments(self) -> list:
         """
         Creates a list with Instrument Objects from Instruments Table selecting the Risk
         """
-        # keep_col = self.config["instruments"]["configuration"].split(",")
-        # weight_col = [self.config["strategy"]["strategy risk class"]]
-        # keep_col = [*keep_col, *weight_col]
-        # instruments_table = self.instruments_table.loc[:, keep_col]
-        # instruments_table.rename(columns={weight_col[0]: "Weight"}, inplace=True)
-        # instruments_table = instruments_table[instruments_table["Weight"] != 0]
         self.instruments_table = self.instruments_table.fillna(0)
         self.instruments_table = self.instruments_table[self.instruments_table[self.strategy_risk_class] != 0]
 
@@ -159,36 +176,43 @@ class Portfolio(object):
         return instrument_ls
 
     def init_prices(self, path: Path, index_col: str) -> pd.DataFrame:
+        """
+        This function loads in the prices.
+        In case there is a substitution configured for an instrument,
+        it will be substituted until the original is available. ('available from' in instruments config)
+        """
         tbl = pd.read_csv(path)
         tbl[index_col] = tbl[index_col].apply(lambda x: dt.datetime.strptime(x, "%Y-%m-%d").date())
         tbl = tbl.set_index(index_col)
-
-        price_ret_df = tbl.loc[self.start_date:, [inst.ticker for inst in self.instrument_ls]]
+        start_date = self.start_date + dt.timedelta(days=-1)
+        price_ret_df = tbl.loc[start_date:, [inst.ticker for inst in self.instrument_ls]]
 
         # SUBSTITUTE
         for inst in self.instrument_ls:
-            if inst.substitute_bool and inst.available_from > self.start_date:
+            if inst.substitute_bool and inst.available_from > start_date:
                 end_date = self.end_date if inst.available_from > self.end_date \
                     else inst.available_from + dt.timedelta(days=-1)
-                price_ret_df.loc[self.start_date:end_date, inst.ticker] = tbl.loc[self.start_date:end_date, inst.substitute_ticker]
+                price_ret_df.loc[start_date:end_date, inst.ticker] = tbl.loc[start_date:end_date, inst.substitute_ticker]
         return price_ret_df
 
     def manage_portfolio(self):
+        """
+        This method contains the central for loop for which calculation per day/row is called.
+        """
         self.wake_up()
 
         end_date = self.end_date if self.end_date is not None else dt.date.today()
         bday_range = self.calendar.bday_range(start=self.start_date, end=end_date)
-
-        self.details_np = self.details.values  # Convert DataFrame into Numpy Matrix
-
-        for day_idx in range(1, len(bday_range)):
+        self.details_np = self.details.values  # Convert DataFrame into Numpy Matrix for performance
+        for day_idx in range(1, len(bday_range)+1):
             self.routine(day_idx)
 
         self.go_to_sleep()
-        kpi_dic = self.get_kpi()
-        return kpi_dic
 
     def get_kpi(self):
+        """
+        This function calculates the KPIs deemed necessary.
+        """
         days_per_year = 252
 
         # Count of Rebalancing
@@ -246,6 +270,9 @@ class Portfolio(object):
         return ret_dic
 
     def wake_up(self):
+        """
+        This method initialises all necessary variables
+        """
         self.init_details()
         self.apply_product_cost()
 
@@ -262,6 +289,10 @@ class Portfolio(object):
         self.set_unit3_threshold()
 
     def init_details(self):
+        """
+        This method is initialising the details sheet with column headers and rows (date range).
+        It is also responsible for importing the prices from the price sheet and deducing the return series.
+        """
         self.inst_col = [f"{inst.ticker}" for inst in self.instrument_ls]
         self.wts_col = [f"{inst.ticker} Weight" for inst in self.instrument_ls]
         self.ret_col = [f"{inst.ticker} Return" for inst in self.instrument_ls]
@@ -272,7 +303,7 @@ class Portfolio(object):
         self.details = pd.DataFrame(columns=[*inst_ls, *other_ls])
 
         end_date = self.end_date if self.end_date is not None else dt.date.today()
-        start_date = self.calendar.bday_add(self.start_date, days=0)
+        start_date = self.calendar.bday_add(self.start_date, days=-1)
         bday_range = self.calendar.bday_range(start=start_date, end=end_date)
 
         # Import Prices Table into Details Sheet
@@ -284,12 +315,11 @@ class Portfolio(object):
         ret_mat = self.details.loc[:, self.inst_col] - 1
         ret_mat.rename(columns=rename_dic, inplace=True)
         self.details.loc[:, self.ret_col] = ret_mat
-        # self.details.loc[:, "LS01TREU Index Return"] = 0
-
-        # self.details.loc[:, self.ret_col] = self.details.loc[:, self.ret_col].fillna(0)
 
     def apply_product_cost(self):
-        # Apply Product Cost
+        """
+        This function applies the product cost on the daily return
+        """
         for inst in self.instrument_ls:
             ret_series = self.details.loc[:, f"{inst.ticker} Return"]
             prod_cost = inst.product_cost
@@ -299,14 +329,23 @@ class Portfolio(object):
 
     @abstractmethod
     def routine(self, day: int):
+        """
+        This function has to implemented in the child class
+        """
         pass
 
     # PORTFOLIO FUNCTIONS
     def reset_weights(self, t):
+        """
+        This function resets the weights to the starting allocation.
+        """
         self.details_np[t, self.wts_col_np] = [inst.weight for inst in self.instrument_ls]
         return self.details_np[t, self.wts_col_np]
 
     def calc_weights(self, t):
+        """
+        This function calculates the new weights after one return period (day).
+        """
         pf_ret_t = self.details_np[t, self.pf_ret_col]
         inst_ret_t_arr = self.details_np[t, self.ret_col_np]
         wts_tm1_arr = self.details_np[t-1, self.wts_col_np]
@@ -315,7 +354,9 @@ class Portfolio(object):
         return wts_t_arr
 
     def calc_portfolio_ret(self, t):
-
+        """
+        This function calculates the Portfolio Ret
+        """
         wts_array_tm1 = self.details_np[t-1, self.wts_col_np]
         ret_array = self.details_np[t, self.ret_col_np]
         pf_ret = np.dot(wts_array_tm1, ret_array)
@@ -339,55 +380,44 @@ class Portfolio(object):
 
     @abstractmethod
     def check_rebal(self, t):
+        """
+        This function has to implemented in the child class
+        """
         pass
 
     def go_to_sleep(self):
         """
-        Generate Output Files, e.g Details Sheet or Fact Sheet
+        This method handles post calculation processes
+        Generate Output Files, e.g Details Sheet & Fact Sheet (Future)
         """
         self.details_np[0, self.pf_ret_col] = 0
         self.details = pd.DataFrame(self.details_np, columns=self.details.columns, index=self.details.index)
         self.details['Cumulative Portfolio Return'] = (1 + self.details["Portfolio Return"]).cumprod() - 1
-        self.export_files()
-        self.generate_fact_sheet()
+        # self.export_files()
+        # self.generate_fact_sheet()
 
     def export_files(self):
         """
-        Exports the Details Sheet.
+        This function exports the Details Sheet.
         """
         self.details.to_csv(self.root_path / Path(f"{self.strategy_name}_details.csv"))
         print(f'Details Sheet exported to {self.root_path / Path(f"{self.strategy_name}_details.csv")}')
-        pass
 
     def generate_fact_sheet(self):
         """
-        Generates the Fact Sheet.
+        This function generates the Fact Sheet.
         """
         pass
 
     def load_config(self, config_path: Union[str, Path]) -> configparser.RawConfigParser:
         """
-        Loads the config file.
-
-        Note:
-            In case of a FileNotFoundError due to the nature of network drives this could also be a hint towards an
-            incorrect or missing drive mapping.
-
-        Args:
-            config_path (Union[str, Path], optional): If provided, specifies the config file path to be loaded.
-
-        Returns:
-            configparser.RawConfigParser: The loaded config.
-
-        Raises:
-            FileNotFoundError: If the specified config file could not be found at the target location.
+        This function loads the config file.
         """
-
         if not config_path.exists():
             error_msg = f'Attempting to load the config file {config_path}, while this file could not be found!'
-            self.logger.error(error_msg)
+            print(error_msg)
             raise FileNotFoundError(error_msg)
-
+        
         config = configparser.RawConfigParser()
         config.read(str(config_path))
         return config

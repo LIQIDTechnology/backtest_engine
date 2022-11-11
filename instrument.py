@@ -1,8 +1,9 @@
 import datetime as dt
+
+
 class Instrument(object):
 
     def __init__(self, instrument: str = None, risk_class: int = None):
-        print(instrument)
         self.ticker = instrument.name
         self.name = instrument["Instrument Name"]
         self.type = instrument["Type"]  # equity, bond, index, exchange traded fund, open fund

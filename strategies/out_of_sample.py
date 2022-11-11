@@ -8,46 +8,63 @@ import datetime as dt
 
 from portfolio import Portfolio
 from instrument import Instrument
+import datetime as dt
+from strategies.strategy import Strategy
+import scipy
 
 
-class Strategy(Portfolio):
-    """
-    Vanilla Strategy, where the Rebalancing Logic is steered over the Threshold Scaling Unit
+class ThresholdOptimizer(object):
 
-    """
+    def __init__(self, end_date: dt):
+        self.end_date = end_date
+
+    def sr_martin(self, pf_ret):
+        avg_ret = np.average(pf_ret)
+        sr_1 = ((1 + avg_ret) ** 252) - 1
+        stdev_pf_ret = np.std(pf_ret, ddof=1)
+        sr_2 = stdev_pf_ret * np.sqrt(252)
+        sr = sr_1 / sr_2
+        return sr
+
+    def objective_scalar(self, scale_unit):
+        config_path = Path('config') / 'config.ini'
+        strategy = Strategy(config_path=Path(__file__).parents[1] / 'config/config.ini', scale_unit=scale_unit)
+        strategy.end_date = self.end_date
+        strategy.manage_portfolio()
+        pf_ret = strategy.details["Portfolio Return"].values[1:]
+        sr = self.sr_martin(pf_ret)
+        print(f'Scale Unit: {scale_unit}', f'Sharpe Ratio: {"{:.5f}".format(sr)}')
+        # print(f'Threshold: {"{:.2f}".format(scale_unit * 100)} %')
+        # print(f'Sharpe Ratio: {"{:.5f}".format(sr)}')
+        return -sr
+
+    def threshold_optimum(self) -> dict:
+        res = scipy.optimize.minimize_scalar(self.objective_scalar, bounds=[0, 0.1], method="bounded")
+        return res
+
+
+class StrategyOut(Portfolio):
 
     def __init__(self, config_path: Union[str, Path], scale_unit: float):
-        """
-        Declaring variables upon Object Initialization
-        """
         super().__init__(config_path)
         self.unit3_scale = scale_unit
 
     def set_unit1_threshold(self):
-        """
-        Set Unit I Threshold, set to 5%
-        """
         for cluster in self.unit1_ls:
             self.unit1_thres[cluster] = 0.05
 
     def set_unit2_threshold(self):
-        """
-        Set UNIT II Threshold, logic derived from current methodology
-        """
+
         for cluster in self.unit2_ls:
             if cluster in ["GOLD", "CASH", "COM"]:
                 self.unit2_thres[cluster] = 0.01
             else:
-                curr_risk_class = self.strategy_risk_class
-                next_risk_class = str(int(self.strategy_risk_class) + 10)  # e.g. 50 + 10
-                weight_rk_curr = self.instruments_table[self.instruments_table["UNIT II"] == cluster][curr_risk_class].sum()
-                weight_rk_next = self.instruments_table[self.instruments_table["UNIT II"] == cluster][next_risk_class].sum()
+                weight_rk_curr = self.instruments_table[self.instruments_table["UNIT II"] == cluster][self.strategy_risk_class].sum()
+                weight_rk_next = self.instruments_table[self.instruments_table["UNIT II"] == cluster][str(int(self.strategy_risk_class) + 10)].sum()
                 self.unit2_thres[cluster] = abs(weight_rk_curr - weight_rk_next) / 2
 
     def set_unit3_threshold(self):
-        """
-        Set UNIT III Threshold, logic derived from current methodology
-        """
+        # THRESHOLD UNIT III
         for cluster in self.unit3_ls:
             unit2_cluster = self.unit3to2_map[cluster]
             unit2_wt = self.unit2_weights[unit2_cluster]
@@ -56,7 +73,10 @@ class Strategy(Portfolio):
 
     def check_rebal_cluster(self, cluster_str, t):
         """
-        Method to identify breaches on Thresholds on an explicit UNIT
+
+        @param cluster_str:
+        @param t:
+        @return:
         """
         unit_ls = getattr(self, f"{cluster_str}_ls")
         unit_idx = getattr(self, f"{cluster_str}_idx")
@@ -77,7 +97,9 @@ class Strategy(Portfolio):
 
     def check_rebal(self, t):
         """
-        Daily Method to identify breaches on Thresholds on all UNIT Levels
+
+        @param t:
+        @return:
         """
         self.check_rebal_cluster("unit1", t)
         self.check_rebal_cluster("unit2", t)
@@ -90,23 +112,20 @@ class Strategy(Portfolio):
         return rebal_bool
 
     def routine(self, t):
-        """
-        Daily Routine what is calculated on each day / over each row
-        """
         self.reset_weights(t-1) if self.details.index[t] == self.start_date else None  # INIT WEIGHTS
         self.calc_portfolio_ret(t)
         self.reset_weights(t) if self.check_rebal(t) else self.calc_weights(t)
+        if self.details.index[t].year != self.details.index[t-1].year:
+            study = ThresholdOptimizer(end_date=self.details.index[t])
+            res = study.threshold_optimum()
+            print(self.details.index[t].year, res.x)
+            self.unit3_scale = res.x
 
 
 if __name__ == "__main__":
-    # Example Execution of Strategy Object
-    strategy = Strategy(config_path=Path(__file__).parents[1] / 'config/config.ini', scale_unit=0.020925644969531886)
-    strategy.manage_portfolio()  # Returns a KPI Dictionary
-    strategy.export_files()  # Exports Detail Sheet (also triggered in manage_portfolio
-
-    # Output KPIs into DataFrame
-    kpi_dic = strategy.get_kpi()  # Returns a KPI Dictionary
-    kpi_df = pd.DataFrame([kpi_dic])  # Convert to DataFrame
-    folderpath = strategy.root_path
-    filename = "kpi_summary_optim.csv"
-    kpi_df.to_csv(folderpath / filename)
+    strategy = StrategyOut(config_path=Path(__file__).parents[1] / 'config/config.ini', scale_unit=0.05)
+    kpi_dic6 = strategy.manage_portfolio()
+    kpi6_df = pd.DataFrame([kpi_dic6])
+    folderpath = Path("/Volumes/GoogleDrive/My Drive/0003_QPLIX/004_Backtest Engine/")
+    filename = "kpi_summary_optim_out.csv"
+    kpi6_df.to_csv(folderpath / filename)
