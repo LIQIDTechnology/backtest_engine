@@ -32,7 +32,10 @@ if __name__ == "__main__":
         kpi_df = pd.DataFrame([kpi_dic])
         kpi_df_ls.append(kpi_df)
     kpi_all_df = pd.concat(kpi_df_ls)
+    kpi_all_df.insert(0, 'Optimal Threshold', None)
+    kpi_all_df.set_index("Strategy", inplace=True)
+    kpi_all_df.loc[optim_strategy.strategy_name, "Optimal Threshold"] = res.x
     folderpath = benchmark_unit1_only.root_path
     filename = "kpi_summary.csv"
-    kpi_all_df.to_csv(folderpath / filename, index=False)
+    kpi_all_df.to_csv(folderpath / filename)
     print(f'KPI Summary exported to {folderpath / filename}')
