@@ -63,17 +63,21 @@ class Benchmark(Portfolio):
         """
         Daily Routine what is calculated on each day / over each row
         """
-        self.reset_weights(t-1) if self.details.index[t] == self.start_date else None  # INIT WEIGHTS
+        if self.details.index[t] == self.start_date:  # INIT WEIGHTS
+            self.details_np[0, self.pf_ret_col] = 0
+            self.details_np[0, self.pf_cum_ret_col] = 0
+            self.details_np[0, self.hyp_amount_inv_col] = self.amount_inv
+            self.reset_weights(t - 1)
         self.calc_portfolio_ret(t)
         self.reset_weights(t) if self.check_rebal(t) else self.calc_weights(t)
 
 
 if __name__ == "__main__":
-    # Example Execution of Strategy Object
+    # Example Execution of Benchmark Object
     config_folder = Path(__file__).parents[1]
     config_path = config_folder / 'config/config_benchmark.ini'  # same for all benchmark types
     # quarterly, monthly, annually, nothing, five_percent"
-    benchmark_never = Benchmark(config_path=config_path, benchmark_type='never')
+    benchmark_never = Benchmark(config_path=config_path, benchmark_type='monthly')
     benchmark_never.manage_portfolio()  # Returns a KPI Dictionary
     benchmark_never.export_files()  # Exports Detail Sheet (also triggered in manage_portfolio)
 
@@ -84,6 +88,3 @@ if __name__ == "__main__":
     filename = "benchmark_never.csv"
     kpi_df.to_csv(folderpath / filename)
     print(f'KPIs exported to {folderpath / filename}')
-
-
-

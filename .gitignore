@@ -118,7 +118,7 @@ venv.bak/
 
 #Files
 config/
-config/config.ini
+config/config_strategy.ini
 .config.ini
 
 # Rope project settings

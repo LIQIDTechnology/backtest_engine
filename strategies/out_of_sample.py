@@ -1,53 +1,20 @@
 from pathlib import Path
 from typing import Union
-from functools import lru_cache
 
 import numpy as np
 import pandas as pd
 import datetime as dt
 
 from portfolio import Portfolio
-from instrument import Instrument
-import datetime as dt
-from strategies.strategy import Strategy
-import scipy
+from threshold_optim import ThresholdOptimizer
 
 
-class ThresholdOptimizer(object):
+class StrategyOutOfSample(Portfolio):
 
-    def __init__(self, end_date: dt):
-        self.end_date = end_date
-
-    def sr_martin(self, pf_ret):
-        avg_ret = np.average(pf_ret)
-        sr_1 = ((1 + avg_ret) ** 252) - 1
-        stdev_pf_ret = np.std(pf_ret, ddof=1)
-        sr_2 = stdev_pf_ret * np.sqrt(252)
-        sr = sr_1 / sr_2
-        return sr
-
-    def objective_scalar(self, scale_unit):
-        config_path = Path('config') / 'config.ini'
-        strategy = Strategy(config_path=Path(__file__).parents[1] / 'config/config.ini', scale_unit=scale_unit)
-        strategy.end_date = self.end_date
-        strategy.manage_portfolio()
-        pf_ret = strategy.details["Portfolio Return"].values[1:]
-        sr = self.sr_martin(pf_ret)
-        print(f'Scale Unit: {scale_unit}', f'Sharpe Ratio: {"{:.5f}".format(sr)}')
-        # print(f'Threshold: {"{:.2f}".format(scale_unit * 100)} %')
-        # print(f'Sharpe Ratio: {"{:.5f}".format(sr)}')
-        return -sr
-
-    def threshold_optimum(self) -> dict:
-        res = scipy.optimize.minimize_scalar(self.objective_scalar, bounds=[0, 0.1], method="bounded")
-        return res
-
-
-class StrategyOut(Portfolio):
-
-    def __init__(self, config_path: Union[str, Path], scale_unit: float):
+    def __init__(self, config_path: Union[str, Path], scale_unit: float, optim_type: str):
         super().__init__(config_path)
         self.unit3_scale = scale_unit
+        self.optim_type = optim_type
 
     def set_unit1_threshold(self):
         for cluster in self.unit1_ls:
@@ -115,17 +82,45 @@ class StrategyOut(Portfolio):
         self.reset_weights(t-1) if self.details.index[t] == self.start_date else None  # INIT WEIGHTS
         self.calc_portfolio_ret(t)
         self.reset_weights(t) if self.check_rebal(t) else self.calc_weights(t)
-        if self.details.index[t].year != self.details.index[t-1].year:
-            study = ThresholdOptimizer(end_date=self.details.index[t])
-            res = study.threshold_optimum()
-            print(self.details.index[t].year, res.x)
-            self.unit3_scale = res.x
+        if self.optim_type == 'expanding':
+            start_date = self.start_date
+            if self.details.index[t].year != self.details.index[t - 1].year:
+                study = ThresholdOptimizer(start_date=start_date, end_date=self.details.index[t])
+                res = study.threshold_optimum()
+                print(self.details.index[t].year, res.x)
+                self.unit3_scale = res.x
+        elif self.optim_type == 'rolling':
+            check_ls = []
+            for k in range(1, 200):
+                year = self.start_date.year + k
+                month = self.start_date.month
+                day = self.start_date.day
+                check_ls.append(dt.date(year, month, day))
+
+            if self.details.index[t] in check_ls:
+                end_date = self.details.index[t]
+                year = self.details.index[t-1].year
+                month = 1
+                day = 1
+                start_date = dt.date(year, month, day)
+                study = ThresholdOptimizer(start_date=start_date, end_date=self.details.index[t])
+                res = study.threshold_optimum()
+                print(self.details.index[t].year, res.x)
+                self.unit3_scale = res.x
 
 
 if __name__ == "__main__":
-    strategy = StrategyOut(config_path=Path(__file__).parents[1] / 'config/config.ini', scale_unit=0.05)
-    kpi_dic6 = strategy.manage_portfolio()
-    kpi6_df = pd.DataFrame([kpi_dic6])
-    folderpath = Path("/Volumes/GoogleDrive/My Drive/0003_QPLIX/004_Backtest Engine/")
-    filename = "kpi_summary_optim_out.csv"
-    kpi6_df.to_csv(folderpath / filename)
+    # Example Execution of StrategyOutOfSample Object
+    config_path = Path(__file__).parents[1] / 'config/config_strategy.ini'
+    start_scale_value = 0.05
+    # expanding, rolling
+    strategy = StrategyOutOfSample(config_path=config_path, scale_unit=start_scale_value, optim_type='rolling')
+    strategy.manage_portfolio()
+    strategy.export_files()
+
+    # Output KPIs into DataFrame
+    kpi_dic = strategy.get_kpi()
+    kpi_df = pd.DataFrame([kpi_dic])
+    folderpath = strategy.root_path
+    filename = "kpi_summary_out_of_sample.csv"
+    kpi_df.to_csv(folderpath / filename)

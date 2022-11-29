@@ -34,6 +34,8 @@ class Portfolio(object):
         self.end_date = dt.datetime.strptime(self.config["strategy"]["end date"], "%Y-%m-%d").date()
         self.trading_cost = float(self.config["strategy"]["trading costs"])
         self.liqid_fee = float(self.config["strategy"]["liqid fee"])
+        self.amount_inv = float(self.config["strategy"]["amount invested"])
+        self.trading_days = float(self.config["strategy"]["trading days"])
 
         # PORTFOLIO MANAGEMENT (Could also be moved into Wake Up Cycle)
         self.instruments_table = pd.read_csv(self.instrument_path, index_col="Instrument Ticker")
@@ -68,9 +70,17 @@ class Portfolio(object):
         self.wts_col_np = None
         self.ret_col_np = None
         self.pf_ret_col = None
+        self.pf_cum_ret_col = None
         self.unit1_col = None
         self.unit2_col = None
         self.unit3_col = None
+        self.liqid_cost_col = None
+        self.trading_vol_col = None
+        self.trading_cost_col = None
+        self.hyp_amount_inv_col = None
+        self.hyp_liqid_cost_col = None
+        self.hyp_trading_vol_col = None
+        self.hyp_trading_cost_col = None
         self.unit1_rebalance_col = None
         self.unit2_rebalance_col = None
         self.unit3_rebalance_col = None
@@ -92,9 +102,17 @@ class Portfolio(object):
         self.wts_col_np = [self.details.columns.get_loc(col) for col in self.wts_col]
         self.ret_col_np = [self.details.columns.get_loc(col) for col in self.ret_col]
         self.pf_ret_col = self.details.columns.get_loc("Portfolio Return")
+        self.pf_cum_ret_col = self.details.columns.get_loc("Cumulative Portfolio Return")
         self.unit1_col = [self.details.columns.get_loc(col) for col in self.unit1_ls]
         self.unit2_col = [self.details.columns.get_loc(col) for col in self.unit2_ls]
         self.unit3_col = [self.details.columns.get_loc(col) for col in self.unit3_ls]
+        self.liqid_cost_col = self.details.columns.get_loc("LIQID Cost")
+        self.trading_vol_col = self.details.columns.get_loc("Trading Volume")
+        self.trading_cost_col = self.details.columns.get_loc("Trading Cost")
+        self.hyp_amount_inv_col = self.details.columns.get_loc("Hyp Amount Invested")
+        self.hyp_liqid_cost_col = self.details.columns.get_loc("Hyp LIQID Cost")
+        self.hyp_trading_vol_col = self.details.columns.get_loc("Hyp Trading Volume")
+        self.hyp_trading_cost_col = self.details.columns.get_loc("Hyp Trading Cost")
         self.unit1_rebalance_col = self.details.columns.get_loc("UNIT1 Rebalance")
         self.unit2_rebalance_col = self.details.columns.get_loc("UNIT2 Rebalance")
         self.unit3_rebalance_col = self.details.columns.get_loc("UNIT3 Rebalance")
@@ -213,7 +231,7 @@ class Portfolio(object):
         """
         This function calculates the KPIs deemed necessary.
         """
-        days_per_year = 252
+        days_per_year = self.trading_days
 
         # Count of Rebalancing
         rebal_count_unit1 = self.details.loc[:, "UNIT1 Rebalance"].sum()
@@ -254,7 +272,7 @@ class Portfolio(object):
 
         kpi_dic = {"Strategy": self.strategy_name,
                    "Total Return": tot_ret_str,
-                   "Sharpe Ratio Proxy": sr_str,
+                   # "Sharpe Ratio Proxy": sr_str,
                    "Rebalancing Count": rebal_count,
                    "Rebalancing Count UNIT1": rebal_count_unit1,
                    "Rebalancing Count UNIT2": rebal_count_unit2,
@@ -266,7 +284,8 @@ class Portfolio(object):
         weight2_dic = {cluster: self.details_np[-1, self.unit2_idx[cluster]].sum() for cluster in self.unit2_ls}
         weight3_dic = {cluster: self.details_np[-1, self.unit3_idx[cluster]].sum() for cluster in self.unit3_ls}
 
-        ret_dic = {**kpi_dic, **weight1_dic, **weight2_dic, **weight3_dic}
+        # ret_dic = {**kpi_dic, **weight1_dic, **weight2_dic, **weight3_dic}
+        ret_dic = {**kpi_dic }
         return ret_dic
 
     def wake_up(self):
@@ -298,9 +317,22 @@ class Portfolio(object):
         self.ret_col = [f"{inst.ticker} Return" for inst in self.instrument_ls]
 
         inst_ls = [*self.inst_col, *self.ret_col, *self.wts_col, *self.unit3_ls, *self.unit2_ls, *self.unit1_ls]
-        other_ls = ["UNIT1 Rebalance", "UNIT2 Rebalance", "UNIT3 Rebalance", "Rebalance", "Portfolio Return"]
+        other_ls = ["UNIT1 Rebalance",
+                    "UNIT2 Rebalance",
+                    "UNIT3 Rebalance",
+                    "Rebalance",
+                    "LIQID Cost",
+                    "Trading Volume",
+                    "Trading Cost",
+                    "Portfolio Return",
+                    "Cumulative Portfolio Return",
+                    "Hyp Amount Invested",
+                    "Hyp LIQID Cost",
+                    "Hyp Trading Volume",
+                    "Hyp Trading Cost"]
 
         self.details = pd.DataFrame(columns=[*inst_ls, *other_ls])
+        self.details.index.name = 'Date'
 
         end_date = self.end_date if self.end_date is not None else dt.date.today()
         start_date = self.calendar.bday_add(self.start_date, days=-1)
@@ -323,7 +355,7 @@ class Portfolio(object):
         for inst in self.instrument_ls:
             ret_series = self.details.loc[:, f"{inst.ticker} Return"]
             prod_cost = inst.product_cost
-            cost_factor = (1 - prod_cost) ** (1 / 252)
+            cost_factor = (1 - prod_cost) ** (1 / self.trading_days)
             new_ret_series = (1 + ret_series) * cost_factor - 1
             self.details.loc[:, f"{inst.ticker} Return"] = new_ret_series
 
@@ -357,25 +389,61 @@ class Portfolio(object):
         """
         This function calculates the Portfolio Ret
         """
+        hyp_amount_inv_tm1 = self.details_np[t - 1, self.hyp_amount_inv_col]
         wts_array_tm1 = self.details_np[t-1, self.wts_col_np]
         ret_array = self.details_np[t, self.ret_col_np]
         pf_ret = np.dot(wts_array_tm1, ret_array)
 
         # Apply Trading Costs
-        if self.details.index[t] > self.start_date and self.check_rebal(t-1):
-            wts_array_tm2 = self.details_np[t-2, self.wts_col_np]
-            volume_traded = sum(abs(wts_array_tm2-wts_array_tm1))
-            trading_cost = volume_traded * self.trading_cost
+        if self.details.index[t] > self.start_date and self.check_rebal(t):
+            self.reset_weights(t)
+            trading_cost = 0
+            for inst in self.instrument_ls:
+                inst_weight_col = self.details.columns.get_loc(f"{inst.ticker} Weight")
+                wt_tm1 = self.details_np[t - 1, inst_weight_col]
+                wt_t = self.details_np[t, inst_weight_col]
+                diff = abs(wt_tm1-wt_t)
+                inst_trading_cost = diff * inst.trading_cost
+                inst_trading_cost = diff * 0
+                trading_cost += inst_trading_cost
+
+            wts_array_tm1 = self.details_np[t-1, self.wts_col_np]
+            wts_array_t = self.details_np[t, self.wts_col_np]
+
+            volume_traded = sum(abs(wts_array_tm1-wts_array_t))
+
+            self.details_np[t, self.trading_vol_col] = volume_traded
+            self.details_np[t, self.trading_cost_col] = trading_cost
+            self.details_np[t, self.hyp_trading_vol_col] = hyp_amount_inv_tm1 * volume_traded
+            self.details_np[t, self.hyp_trading_cost_col] = hyp_amount_inv_tm1 * trading_cost
             pf_ret = pf_ret - trading_cost
 
         # Apply LIQID Fee
+
         month_today = self.details.index[t].month
         month_ytd = self.details.index[t-1].month
         if month_today != month_ytd and month_today in (3, 6, 9, 12):
-            quarterly_fee_factor = (1 - self.liqid_fee) ** (1 / 63)
-            pf_ret = pf_ret * quarterly_fee_factor
+            # quarterly_cost_factor = (1 - self.liqid_fee / 4) ** (1 / 63)
+            quarterly_cost_factor = (1 - self.liqid_fee / 4)
+            # actual_liqid_fee = pf_ret - (pf_ret * quarterly_cost_factor)
+            # hyp_amount_inv_tm1 * quarterly_cost_factor
+
+            before = hyp_amount_inv_tm1 * (pf_ret + 1)
+            pf_ret = (1 + pf_ret) * quarterly_cost_factor - 1
+            after = hyp_amount_inv_tm1 * (pf_ret + 1)
+            # print(hyp_amount_inv_tm1, f'Expected: {hyp_amount_inv_tm1 * self.liqid_fee / 4}', f'Actual: {before - after}')
+            self.details_np[t, self.hyp_liqid_cost_col] = before - after
 
         self.details_np[t, self.pf_ret_col] = pf_ret
+
+        # Cumulative Portfolio Return
+        pf_cum_ret_tm1 = self.details_np[t-1, self.pf_cum_ret_col]
+        pf_cum_ret_t = (pf_cum_ret_tm1 + 1) * (pf_ret + 1) - 1
+        self.details_np[t, self.pf_cum_ret_col] = pf_cum_ret_t
+
+        # Hyp Amount Invested
+        hyp_amount_inv_t = hyp_amount_inv_tm1 * (pf_ret + 1)
+        self.details_np[t, self.hyp_amount_inv_col] = hyp_amount_inv_t
         return pf_ret
 
     @abstractmethod
@@ -390,9 +458,8 @@ class Portfolio(object):
         This method handles post calculation processes
         Generate Output Files, e.g Details Sheet & Fact Sheet (Future)
         """
-        self.details_np[0, self.pf_ret_col] = 0
         self.details = pd.DataFrame(self.details_np, columns=self.details.columns, index=self.details.index)
-        self.details['Cumulative Portfolio Return'] = (1 + self.details["Portfolio Return"]).cumprod() - 1
+        # self.details['Cumulative Portfolio Return'] = (1 + self.details["Portfolio Return"]).cumprod() - 1
         # self.export_files()
         # self.generate_fact_sheet()
 

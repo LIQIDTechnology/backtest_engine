@@ -93,14 +93,18 @@ class Strategy(Portfolio):
         """
         Daily Routine what is calculated on each day / over each row
         """
-        self.reset_weights(t-1) if self.details.index[t] == self.start_date else None  # INIT WEIGHTS
+        if self.details.index[t] == self.start_date:  # INIT WEIGHTS
+            self.details_np[0, self.pf_ret_col] = 0
+            self.details_np[0, self.pf_cum_ret_col] = 0
+            self.details_np[0, self.hyp_amount_inv_col] = self.amount_inv
+            self.reset_weights(t - 1)
         self.calc_portfolio_ret(t)
         self.reset_weights(t) if self.check_rebal(t) else self.calc_weights(t)
 
 
 if __name__ == "__main__":
     # Example Execution of Strategy Object
-    strategy = Strategy(config_path=Path(__file__).parents[1] / 'config/config.ini', scale_unit=0.020925644969531886)
+    strategy = Strategy(config_path=Path(__file__).parents[1] / 'config/config_strategy.ini', scale_unit=0.020925644969531886)
     strategy.manage_portfolio()  # Returns a KPI Dictionary
     strategy.export_files()  # Exports Detail Sheet (also triggered in manage_portfolio
 

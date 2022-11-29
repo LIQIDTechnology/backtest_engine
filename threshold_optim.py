@@ -2,13 +2,15 @@ from pathlib import Path
 import scipy
 
 from strategies.strategy import Strategy
+import datetime as dt
 import numpy as np
 
 
 class ThresholdOptimizer(object):
 
-    def __init__(self):
-        pass
+    def __init__(self, start_date: dt, end_date: dt):
+        self.start_date = start_date
+        self.end_date = end_date
 
     # def sr_martin(self, pf_ret):
     #     avg_ret = np.average(pf_ret)
@@ -21,7 +23,7 @@ class ThresholdOptimizer(object):
     # def objective(self, scale_unit):
     #     print(scale_unit)
     #     scale_unit = scale_unit[0]
-    #     config_path = Path('config') / 'config.ini'
+    #     config_path = Path('config') / 'config_strategy.ini'
     #     strategy = Strategy(config_path=config_path, scale_unit=scale_unit)
     #
     #     strategy.manage_portfolio()
@@ -33,7 +35,7 @@ class ThresholdOptimizer(object):
     #     return -sr
     #
     # def objective_scalar(self, scale_unit):
-    #     config_path = Path('config') / 'config.ini'
+    #     config_path = Path('config') / 'config_strategy.ini'
     #     strategy = Strategy(config_path=config_path, scale_unit=scale_unit)
     #
     #     strategy.manage_portfolio()
@@ -48,8 +50,11 @@ class ThresholdOptimizer(object):
         """
         Objective Function: Total Return of Strategy
         """
-        config_path = Path('config') / 'config.ini'
+        config_path = Path('config') / 'config_strategy.ini'
+        config_path = Path(__file__).parents[0] / 'config/config_strategy.ini'
         strategy = Strategy(config_path=config_path, scale_unit=scale_unit)
+        strategy.end_date = self.start_date
+        strategy.end_date = self.end_date
         strategy.manage_portfolio()
         tot_ret = (strategy.details.loc[strategy.end_date, "Cumulative Portfolio Return"])
         print(f'Scale Unit: {scale_unit}', f'Total Return: {"{:.5f}".format(tot_ret)}')
@@ -99,7 +104,7 @@ class ThresholdOptimizer(object):
 
 
 if __name__ == "__main__":
-    study = ThresholdOptimizer()
+    study = ThresholdOptimizer(start_date=dt.date(2001, 1, 18), end_date=dt.date(2022, 10, 18))
     res = study.threshold_optimum()
     print(res.x)
 
