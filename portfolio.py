@@ -363,14 +363,14 @@ class Portfolio(object):
 
         ret_array_t = self.details_np[t, self.ret_col_np]
         inst_inv_arr_t = inst_inv_arr_tm1 * (1 + ret_array_t)
+        self.details_np[t, self.inv_col_np] = inst_inv_arr_t
         hyp_amount_inv_t = self.details_np[t, self.inv_col_np].sum()
+        self.details_np[t, self.hyp_amount_inv_col] = hyp_amount_inv_t
 
         pf_ret = hyp_amount_inv_t / hyp_amount_inv_tm1 - 1
         wts_arr_t = self.details_np[t, self.inv_col_np] / hyp_amount_inv_t
+        self.details_np[t, self.wts_col_np] = wts_arr_t
 
-        self.details_np[t, self.inv_col_np] = inst_inv_arr_t
-        self.details_np[t, self.hyp_amount_inv_col] = hyp_amount_inv_t
-        self.details_np[t, self.wts_col_np] = wts_arr_t 
 
         # Apply LIQID Fee
 
@@ -379,7 +379,6 @@ class Portfolio(object):
             month_tmr = self.details.index[t+1].month
         except IndexError:
             month_tmr = month_today
-
 
         if month_today != month_tmr and month_today in (3, 6, 9, 12):
             # quarterly_cost_factor = (1 - self.liqid_fee / 4) ** (1 / 63)
@@ -410,8 +409,8 @@ class Portfolio(object):
         self.details_np[t, self.pf_cum_ret_col] = pf_cum_ret_t
 
         # Hyp Amount Invested
-        hyp_amount_inv_t = hyp_amount_inv_tm1 * (pf_ret + 1)
-        self.details_np[t, self.hyp_amount_inv_col] = hyp_amount_inv_t
+        # hyp_amount_inv_t = hyp_amount_inv_tm1 * (pf_ret + 1)
+        # self.details_np[t, self.hyp_amount_inv_col] = hyp_amount_inv_t
         return pf_ret
 
     @abstractmethod
