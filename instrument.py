@@ -9,9 +9,9 @@ class Instrument(object):
         self.type = instrument["Type"]  # equity, bond, index, exchange traded fund, open fund
         self.currency = instrument["Currency"]  # Currency
         self.weight = instrument[risk_class]
-        self.unit1 = instrument["UNIT I"]
-        self.unit2 = instrument["UNIT II"]
-        self.unit3 = instrument["UNIT III"]
+        self.unit1 = None if instrument["UNIT I"] == 0 else instrument["UNIT I"]
+        self.unit2 = None if instrument["UNIT II"] == 0 else instrument["UNIT II"]
+        self.unit3 = None if instrument["UNIT III"] == 0 else instrument["UNIT III"]
         self.product_cost = instrument["Product Cost"]
         self.trading_cost = instrument["Trading Cost"]
         self.available_from = dt.datetime.strptime(instrument["Available from"], "%Y-%m-%d").date()

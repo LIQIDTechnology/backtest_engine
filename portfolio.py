@@ -37,43 +37,22 @@ class Portfolio(object):
         self.amount_inv = float(self.config["strategy"]["amount invested"])
         self.trading_days = float(self.config["strategy"]["trading days"])
 
-        # PORTFOLIO MANAGEMENT (Could also be moved into Wake Up Cycle)
-        self.instruments_table = pd.read_csv(self.instrument_path, index_col="Instrument Ticker")
-        self.instrument_ls = self.init_instruments()
-        self.prices_table = self.init_prices(self.prices_path, index_col="Date")
-        self.details = pd.DataFrame([])
+        # PORTFOLIO MANAGEMENT
+        self.instruments_table = pd.DataFrame([])
+        self.instrument_ls = []
+        self.prices_table = pd.DataFrame([])
+        self.details = None
         self.details_np = None
 
-        self.unit1_thres = {}
-        self.unit2_thres = {}
-        self.unit3_thres = {}
-
-        self.unit1_thres_breach = {}
-        self.unit2_thres_breach = {}
-        self.unit3_thres_breach = {}
-
-        self.unit1_weights = {}
-        self.unit2_weights = {}
-        self.unit3_weights = {}
-
-        self.unit1_idx = {}
-        self.unit2_idx = {}
-        self.unit3_idx = {}
-
-        self.unit3to2_map = {}
-        self.unit2to1_map = {}
-
         self.inst_col = None
-        self.wts_col = None
         self.ret_col = None
+        self.inv_col = None
+        self.wts_col = None
         self.inst_col_np = None
         self.wts_col_np = None
         self.ret_col_np = None
         self.pf_ret_col = None
         self.pf_cum_ret_col = None
-        self.unit1_col = None
-        self.unit2_col = None
-        self.unit3_col = None
         self.liqid_cost_col = None
         self.trading_vol_col = None
         self.trading_cost_col = None
@@ -81,14 +60,7 @@ class Portfolio(object):
         self.hyp_liqid_cost_col = None
         self.hyp_trading_vol_col = None
         self.hyp_trading_cost_col = None
-        self.unit1_rebalance_col = None
-        self.unit2_rebalance_col = None
-        self.unit3_rebalance_col = None
         self.rebalance_col = None
-
-        self.unit3_ls = list(set(inst.unit3 for inst in self.instrument_ls))
-        self.unit2_ls = list(set(inst.unit2 for inst in self.instrument_ls))
-        self.unit1_ls = list(set(inst.unit1 for inst in self.instrument_ls))
 
     def set_column_idx(self):
         """
@@ -99,13 +71,11 @@ class Portfolio(object):
         As the calculation is run over numpy matrices is necessary to have a column name to index mapping
         """
         self.inst_col_np = [self.details.columns.get_loc(col) for col in self.inst_col]
-        self.wts_col_np = [self.details.columns.get_loc(col) for col in self.wts_col]
         self.ret_col_np = [self.details.columns.get_loc(col) for col in self.ret_col]
+        self.inv_col_np = [self.details.columns.get_loc(col) for col in self.inv_col]
+        self.wts_col_np = [self.details.columns.get_loc(col) for col in self.wts_col]
         self.pf_ret_col = self.details.columns.get_loc("Portfolio Return")
         self.pf_cum_ret_col = self.details.columns.get_loc("Cumulative Portfolio Return")
-        self.unit1_col = [self.details.columns.get_loc(col) for col in self.unit1_ls]
-        self.unit2_col = [self.details.columns.get_loc(col) for col in self.unit2_ls]
-        self.unit3_col = [self.details.columns.get_loc(col) for col in self.unit3_ls]
         self.liqid_cost_col = self.details.columns.get_loc("LIQID Cost")
         self.trading_vol_col = self.details.columns.get_loc("Trading Volume")
         self.trading_cost_col = self.details.columns.get_loc("Trading Cost")
@@ -113,84 +83,19 @@ class Portfolio(object):
         self.hyp_liqid_cost_col = self.details.columns.get_loc("Hyp LIQID Cost")
         self.hyp_trading_vol_col = self.details.columns.get_loc("Hyp Trading Volume")
         self.hyp_trading_cost_col = self.details.columns.get_loc("Hyp Trading Cost")
-        self.unit1_rebalance_col = self.details.columns.get_loc("UNIT1 Rebalance")
-        self.unit2_rebalance_col = self.details.columns.get_loc("UNIT2 Rebalance")
-        self.unit3_rebalance_col = self.details.columns.get_loc("UNIT3 Rebalance")
         self.rebalance_col = self.details.columns.get_loc("Rebalance")
-
-    def set_cluster_column_idx(self):
-        """
-        This function curates the cluster dictionaries,
-        which contain the columns (indices) for each cluster (UNIT I-III).
-        """
-        def create_map(instrument_ls, cluster, details_df, level):
-            cluster_idx = {}
-            for cl in cluster:
-                cluster_ls = []
-                for inst in instrument_ls:
-                    dir(inst)
-                    if getattr(inst, f"unit{level}") == cl:
-                        cluster_ls.append(details_df.columns.get_loc(f"{inst.ticker} Weight"))
-                cluster_idx[cl] = cluster_ls
-            return cluster_idx
-
-        self.unit1_idx = create_map(self.instrument_ls, self.unit1_ls, self.details, 1)
-        self.unit2_idx = create_map(self.instrument_ls, self.unit2_ls, self.details, 2)
-        self.unit3_idx = create_map(self.instrument_ls, self.unit3_ls, self.details, 3)
-
-    def set_cluster_weight(self):
-        """
-        This function sets the weight on Cluster Level
-        """
-        for cluster in self.unit1_ls:
-            wts_sum = self.instruments_table[self.instruments_table["UNIT I"] == cluster][self.strategy_risk_class].sum()
-            self.unit1_weights[cluster] = wts_sum
-        for cluster in self.unit2_ls:
-            wts_sum = self.instruments_table[self.instruments_table["UNIT II"] == cluster][self.strategy_risk_class].sum()
-            self.unit2_weights[cluster] = wts_sum
-        for cluster in self.unit3_ls:
-            wts_sum = self.instruments_table[self.instruments_table["UNIT III"] == cluster][self.strategy_risk_class].sum()
-            self.unit3_weights[cluster] = wts_sum
-
-    def set_unit_mapping(self):
-        """
-        This function creates mapping dictionaries between
-        Unit III - Unit II
-        Unit II - Unit I
-        """
-        self.unit3to2_map = dict(zip(self.instruments_table["UNIT III"], self.instruments_table["UNIT II"]))
-        self.unit2to1_map = dict(zip(self.instruments_table["UNIT II"], self.instruments_table["UNIT I"]))
-
-    @abstractmethod
-    def set_unit1_threshold(self):
-        """
-        This function has to implemented in the child class
-        """
-        pass
-
-    @abstractmethod
-    def set_unit2_threshold(self):
-        """
-        This function has to implemented in the child class
-        """
-        pass
-
-    @abstractmethod
-    def set_unit3_threshold(self):
-        """
-        This function has to implemented in the child class
-        """
-        pass
 
     def init_instruments(self) -> list:
         """
         Creates a list with Instrument Objects from Instruments Table selecting the Risk
         """
+        self.instruments_table = pd.read_csv(self.instrument_path, index_col="Instrument Ticker")
         self.instruments_table = self.instruments_table.fillna(0)
         self.instruments_table = self.instruments_table[self.instruments_table[self.strategy_risk_class] != 0]
 
         instrument_ls = [Instrument(self.instruments_table.loc[inst, :], self.strategy_risk_class)
                          for inst in self.instruments_table.index]
+        self.instrument_ls = instrument_ls
         return instrument_ls
 
     def init_prices(self, path: Path, index_col: str) -> pd.DataFrame:
@@ -211,6 +116,7 @@ class Portfolio(object):
                 end_date = self.end_date if inst.available_from > self.end_date \
                     else inst.available_from + dt.timedelta(days=-1)
                 price_ret_df.loc[start_date:end_date, inst.ticker] = tbl.loc[start_date:end_date, inst.substitute_ticker]
+        self.prices_table = price_ret_df
         return price_ret_df
 
     def manage_portfolio(self):
@@ -222,6 +128,9 @@ class Portfolio(object):
         end_date = self.end_date if self.end_date is not None else dt.date.today()
         bday_range = self.calendar.bday_range(start=self.start_date, end=end_date)
         self.details_np = self.details.values  # Convert DataFrame into Numpy Matrix for performance
+
+        # print([inst.weight * 100000 for inst in self.instrument_ls])
+
         for day_idx in range(1, len(bday_range)+1):
             self.routine(day_idx)
 
@@ -234,9 +143,15 @@ class Portfolio(object):
         days_per_year = self.trading_days
 
         # Count of Rebalancing
-        rebal_count_unit1 = self.details.loc[:, "UNIT1 Rebalance"].sum()
-        rebal_count_unit2 = self.details.loc[:, "UNIT2 Rebalance"].sum()
-        rebal_count_unit3 = self.details.loc[:, "UNIT3 Rebalance"].sum()
+        self.strategy_name
+        try:
+            rebal_count_unit1 = self.details.loc[:, "UNIT1 Rebalance"].sum()
+            rebal_count_unit2 = self.details.loc[:, "UNIT2 Rebalance"].sum()
+            rebal_count_unit3 = self.details.loc[:, "UNIT3 Rebalance"].sum()
+        except KeyError:
+            rebal_count_unit1 = 0
+            rebal_count_unit2 = 0
+            rebal_count_unit3 = 0
         rebal_count = self.details.loc[:, "Rebalance"].sum()
 
         # Sharpe Ratio Proxy
@@ -280,32 +195,33 @@ class Portfolio(object):
                    "Maximum Drawdown": mdd_str,
                    "Average annualised return": arth_avg_pd_str,
                    "Annualized Volatility": vola_str}
-        weight1_dic = {cluster: self.details_np[-1, self.unit1_idx[cluster]].sum() for cluster in self.unit1_ls}
-        weight2_dic = {cluster: self.details_np[-1, self.unit2_idx[cluster]].sum() for cluster in self.unit2_ls}
-        weight3_dic = {cluster: self.details_np[-1, self.unit3_idx[cluster]].sum() for cluster in self.unit3_ls}
+        # weight1_dic = {cluster: self.details_np[-1, self.unit1_idx[cluster]].sum() for cluster in self.unit1_ls}
+        # weight2_dic = {cluster: self.details_np[-1, self.unit2_idx[cluster]].sum() for cluster in self.unit2_ls}
+        # weight3_dic = {cluster: self.details_np[-1, self.unit3_idx[cluster]].sum() for cluster in self.unit3_ls}
 
         # ret_dic = {**kpi_dic, **weight1_dic, **weight2_dic, **weight3_dic}
         ret_dic = {**kpi_dic }
         return ret_dic
 
+    @abstractmethod
+    def wake_up_strat(self):
+        pass
+
     def wake_up(self):
         """
         This method initialises all necessary variables
         """
+
+        self.init_instruments()
+        self.init_prices(self.prices_path, index_col="Date")
         self.init_details()
         self.apply_product_cost()
-
-        self.unit1_thres_breach = {cluster: self.details.columns.get_loc(cluster) for cluster in self.unit1_ls}
-        self.unit2_thres_breach = {cluster: self.details.columns.get_loc(cluster) for cluster in self.unit2_ls}
-        self.unit3_thres_breach = {cluster: self.details.columns.get_loc(cluster) for cluster in self.unit3_ls}
-
         self.set_column_idx()
-        self.set_cluster_column_idx()
-        self.set_cluster_weight()
-        self.set_unit_mapping()
-        self.set_unit1_threshold()
-        self.set_unit2_threshold()
-        self.set_unit3_threshold()
+        self.wake_up_strat()
+
+    @abstractmethod
+    def init_details_strat(self):
+        return []
 
     def init_details(self):
         """
@@ -313,14 +229,13 @@ class Portfolio(object):
         It is also responsible for importing the prices from the price sheet and deducing the return series.
         """
         self.inst_col = [f"{inst.ticker}" for inst in self.instrument_ls]
-        self.wts_col = [f"{inst.ticker} Weight" for inst in self.instrument_ls]
         self.ret_col = [f"{inst.ticker} Return" for inst in self.instrument_ls]
+        self.inv_col = [f"{inst.ticker} Invested" for inst in self.instrument_ls]
+        self.wts_col = [f"{inst.ticker} Weight" for inst in self.instrument_ls]
 
-        inst_ls = [*self.inst_col, *self.ret_col, *self.wts_col, *self.unit3_ls, *self.unit2_ls, *self.unit1_ls]
-        other_ls = ["UNIT1 Rebalance",
-                    "UNIT2 Rebalance",
-                    "UNIT3 Rebalance",
-                    "Rebalance",
+        inst_ls = [*self.inst_col, *self.ret_col, *self.inv_col, *self.wts_col]
+        strat_ls = self.init_details_strat()
+        other_ls = ["Rebalance",
                     "LIQID Cost",
                     "Trading Volume",
                     "Trading Cost",
@@ -331,7 +246,7 @@ class Portfolio(object):
                     "Hyp Trading Volume",
                     "Hyp Trading Cost"]
 
-        self.details = pd.DataFrame(columns=[*inst_ls, *other_ls])
+        self.details = pd.DataFrame(columns=[*inst_ls, *strat_ls, *other_ls])
         self.details.index.name = 'Date'
 
         end_date = self.end_date if self.end_date is not None else dt.date.today()
@@ -339,8 +254,9 @@ class Portfolio(object):
         bday_range = self.calendar.bday_range(start=start_date, end=end_date)
 
         # Import Prices Table into Details Sheet
-        inst_col_ls = [inst.ticker for inst in self.instrument_ls]
-        self.details = pd.concat([self.details, self.prices_table.loc[bday_range, inst_col_ls]])
+        prices_table = self.prices_table.loc[bday_range, self.inst_col]
+        self.details = pd.concat([self.details, prices_table])
+        pd.concat([prices_table, self.details])
 
         # Deduce Return Table in Details Sheet
         rename_dic = {col: f"{col} Return" for col in self.inst_col}
@@ -355,8 +271,14 @@ class Portfolio(object):
         for inst in self.instrument_ls:
             ret_series = self.details.loc[:, f"{inst.ticker} Return"]
             prod_cost = inst.product_cost
-            cost_factor = (1 - prod_cost) ** (1 / self.trading_days)
-            new_ret_series = (1 + ret_series) * cost_factor - 1
+
+            ####### martin version
+            prod_cost_daily = (1 + prod_cost) ** (1 / self.trading_days) - 1
+            new_ret_series = ret_series
+
+            ####### truc version
+            # cost_factor = (1 - prod_cost) ** (1 / self.trading_days)
+            # new_ret_series = (1 + ret_series) * cost_factor - 1
             self.details.loc[:, f"{inst.ticker} Return"] = new_ret_series
 
     @abstractmethod
@@ -385,54 +307,100 @@ class Portfolio(object):
         self.details_np[t, self.wts_col_np] = wts_t_arr
         return wts_t_arr
 
+    def apply_rebalance(self, t):
+        """
+        8 Uhr morgens, Portfolio hat über Nacht gerechnet, Instrumente werden gehandelt.
+        """
+
+        today = self.details.index[t]
+        # Apply Trading Costs for Rebalancing
+
+        # self.reset_weights(t)  # Target Weight
+        # old_alloc = self.details_np[t, self.inv_col_np]
+        # self.details_np[t, self.inv_col_np] = self.details_np[t, self.wts_col_np] * hyp_amount_inv_t
+        trading_cost = 0
+        volume = 0
+        hyp_amount_inv_tm1 = self.details_np[t - 1, self.hyp_amount_inv_col]
+        for inst in self.instrument_ls:
+            # inst_weight_col = self.details.columns.get_loc(f"{inst.ticker} Weight")
+            inst_inv_col = self.details.columns.get_loc(f"{inst.ticker} Invested")
+
+            inv_target = inst.weight * hyp_amount_inv_tm1
+            inv_current = self.details_np[t - 1, inst_inv_col]
+
+            diff = abs(inv_target - inv_current)
+            # inst_trading_cost = diff * inst.trading_cost
+            inst_trading_cost = diff * 0
+
+            inv_actual = inv_target - inst_trading_cost
+            self.details_np[t, inst_inv_col] = inv_actual
+            volume += diff
+            trading_cost += inst_trading_cost
+
+        hyp_amount_inv_t = self.details_np[t, self.inv_col_np].sum()
+        self.details_np[t, self.hyp_amount_inv_col] = hyp_amount_inv_tm1
+        self.details_np[t, self.wts_col_np] = self.details_np[t, self.inv_col_np] / hyp_amount_inv_t
+
+        volume_traded = volume / hyp_amount_inv_tm1
+        trading_volume = trading_cost / volume
+        self.details_np[t, self.trading_vol_col] = volume_traded
+        self.details_np[t, self.trading_cost_col] = trading_volume
+        self.details_np[t, self.hyp_trading_vol_col] = volume
+        self.details_np[t, self.hyp_trading_cost_col] = trading_cost
+        # pf_ret = hyp_amount_inv_t / hyp_amount_inv_tm1 - 1
+
     def calc_portfolio_ret(self, t):
         """
         This function calculates the Portfolio Ret
         """
-        hyp_amount_inv_tm1 = self.details_np[t - 1, self.hyp_amount_inv_col]
-        wts_array_tm1 = self.details_np[t-1, self.wts_col_np]
-        ret_array = self.details_np[t, self.ret_col_np]
-        pf_ret = np.dot(wts_array_tm1, ret_array)
-
-        # Apply Trading Costs
         if self.details.index[t] > self.start_date and self.check_rebal(t):
-            self.reset_weights(t)
-            trading_cost = 0
-            for inst in self.instrument_ls:
-                inst_weight_col = self.details.columns.get_loc(f"{inst.ticker} Weight")
-                wt_tm1 = self.details_np[t - 1, inst_weight_col]
-                wt_t = self.details_np[t, inst_weight_col]
-                diff = abs(wt_tm1-wt_t)
-                inst_trading_cost = diff * inst.trading_cost
-                inst_trading_cost = diff * 0
-                trading_cost += inst_trading_cost
+            self.apply_rebalance(t)
+            inst_inv_arr_tm1 = self.details_np[t, self.inv_col_np]  # Neue Gewichte am Morgen
+            hyp_amount_inv_tm1 = self.details_np[t, self.hyp_amount_inv_col]
+        else:
+            inst_inv_arr_tm1 = self.details_np[t-1, self.inv_col_np]
+            hyp_amount_inv_tm1 = self.details_np[t-1, self.hyp_amount_inv_col]
 
-            wts_array_tm1 = self.details_np[t-1, self.wts_col_np]
-            wts_array_t = self.details_np[t, self.wts_col_np]
+        ret_array_t = self.details_np[t, self.ret_col_np]
+        inst_inv_arr_t = inst_inv_arr_tm1 * (1 + ret_array_t)
+        hyp_amount_inv_t = self.details_np[t, self.inv_col_np].sum()
 
-            volume_traded = sum(abs(wts_array_tm1-wts_array_t))
+        pf_ret = hyp_amount_inv_t / hyp_amount_inv_tm1 - 1
+        wts_arr_t = self.details_np[t, self.inv_col_np] / hyp_amount_inv_t
 
-            self.details_np[t, self.trading_vol_col] = volume_traded
-            self.details_np[t, self.trading_cost_col] = trading_cost
-            self.details_np[t, self.hyp_trading_vol_col] = hyp_amount_inv_tm1 * volume_traded
-            self.details_np[t, self.hyp_trading_cost_col] = hyp_amount_inv_tm1 * trading_cost
-            pf_ret = pf_ret - trading_cost
+        self.details_np[t, self.inv_col_np] = inst_inv_arr_t
+        self.details_np[t, self.hyp_amount_inv_col] = hyp_amount_inv_t
+        self.details_np[t, self.wts_col_np] = wts_arr_t 
 
         # Apply LIQID Fee
 
         month_today = self.details.index[t].month
-        month_ytd = self.details.index[t-1].month
-        if month_today != month_ytd and month_today in (3, 6, 9, 12):
+        try:
+            month_tmr = self.details.index[t+1].month
+        except IndexError:
+            month_tmr = month_today
+
+
+        if month_today != month_tmr and month_today in (3, 6, 9, 12):
             # quarterly_cost_factor = (1 - self.liqid_fee / 4) ** (1 / 63)
             quarterly_cost_factor = (1 - self.liqid_fee / 4)
-            # actual_liqid_fee = pf_ret - (pf_ret * quarterly_cost_factor)
-            # hyp_amount_inv_tm1 * quarterly_cost_factor
 
-            before = hyp_amount_inv_tm1 * (pf_ret + 1)
-            pf_ret = (1 + pf_ret) * quarterly_cost_factor - 1
-            after = hyp_amount_inv_tm1 * (pf_ret + 1)
-            # print(hyp_amount_inv_tm1, f'Expected: {hyp_amount_inv_tm1 * self.liqid_fee / 4}', f'Actual: {before - after}')
-            self.details_np[t, self.hyp_liqid_cost_col] = before - after
+            quarterly_cost = self.liqid_fee / 4
+            hyp_amount_inv_t = self.details_np[t, self.hyp_amount_inv_col]
+            cost_to_deduct = hyp_amount_inv_t * quarterly_cost
+
+            cash_ticker = 'LS01TREU Index'
+            cash_inv_col = self.details.columns.get_loc(f"{cash_ticker} Invested")
+            cash_current = self.details_np[t, cash_inv_col]
+            cash_after_cost = cash_current - cost_to_deduct
+            self.details_np[t, cash_inv_col] = cash_after_cost
+
+            hyp_amount_inv_t = self.details_np[t, self.inv_col_np].sum()
+
+            pf_ret = hyp_amount_inv_t / hyp_amount_inv_tm1 - 1
+
+            self.details_np[t, self.wts_col_np] = self.details_np[t, self.inv_col_np] / hyp_amount_inv_t
+            self.details_np[t, self.hyp_liqid_cost_col] = cost_to_deduct
 
         self.details_np[t, self.pf_ret_col] = pf_ret
 
@@ -469,6 +437,27 @@ class Portfolio(object):
         """
         self.details.to_csv(self.root_path / Path(f"{self.strategy_name}_details.csv"))
         print(f'Details Sheet exported to {self.root_path / Path(f"{self.strategy_name}_details.csv")}')
+
+    def qplix_upload(self):
+        """
+        This function generates the qplix ticker upload file
+        """
+        masterdata_col = self.config['qplix']['masterdata_col'].split(",")
+        masterdata_df = pd.DataFrame(columns=masterdata_col)
+        masterdata_dic = {"Ticker": self.strategy_name, "Name": self.strategy_name, "CurrencyCode": "EUR",
+                          "Source": "Internal"}
+        tmp_df = pd.DataFrame([masterdata_dic])
+        masterdata_df = pd.concat([masterdata_df, tmp_df])
+
+        quotes_df = self.details.loc[:, ["Hyp Amount Invested"]] / self.amount_inv
+        quotes_df.rename(columns={"Hyp Amount Invested": "ClosePrice"}, inplace=True)
+        quotes_df["Ticker"] = self.strategy_name
+        quotes_df.reset_index(inplace=True)
+        quotes_df.set_index("Ticker", inplace=True)
+
+        with pd.ExcelWriter(self.root_path / f'QPLIX_Upload_{self.strategy_name}.xlsx') as writer:
+            masterdata_df.to_excel(writer, sheet_name='Masterdata', index=False)
+            quotes_df.to_excel(writer, sheet_name='Quotes')
 
     def generate_fact_sheet(self):
         """

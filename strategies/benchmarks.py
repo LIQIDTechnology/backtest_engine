@@ -11,13 +11,13 @@ class Benchmark(Portfolio):
     Benchmark Strategy, includes strategies with simple rebalancing logics
 
     """
-    def __init__(self, config_path: Union[str, Path], benchmark_type: str):
+    def __init__(self, config_path: Union[str, Path]):
         """
         Declaring variables upon Object Initialization
         """
         super().__init__(config_path)
-        self.bm_type = benchmark_type
-        self.strategy_name = f"{benchmark_type}_rebalance"
+        self.bm_type = None
+        self.strategy_name = f"{self.bm_type}_rebalance"
 
     def check_rebal(self, t):
         """
@@ -33,7 +33,10 @@ class Benchmark(Portfolio):
             rebal_bool = False
         else:
             td_month = self.details.index[t].month  # Today's Month
-            ytd_month = self.details.index[t-1].month  # Yesterday's Month
+            try:
+                ytd_month = self.details.index[t - 1].month  # Yesterday's Month
+            except IndexError:
+                ytd_month = td_month
 
             if self.bm_type == "quarterly":
                 rebal_bool = True if td_month != ytd_month and td_month in (3, 6, 9, 12) else False
@@ -64,10 +67,11 @@ class Benchmark(Portfolio):
         Daily Routine what is calculated on each day / over each row
         """
         if self.details.index[t] == self.start_date:  # INIT WEIGHTS
+            self.reset_weights(t - 1)
             self.details_np[0, self.pf_ret_col] = 0
             self.details_np[0, self.pf_cum_ret_col] = 0
-            self.details_np[0, self.hyp_amount_inv_col] = self.amount_inv
-            self.reset_weights(t - 1)
+            self.details_np[0, self.inv_col_np] = self.details_np[0, self.wts_col_np] * self.amount_inv
+            self.details_np[0, self.hyp_amount_inv_col] = self.details_np[0, self.inv_col_np].sum()
         self.calc_portfolio_ret(t)
         self.reset_weights(t) if self.check_rebal(t) else self.calc_weights(t)
 
