@@ -4,50 +4,50 @@ from strategies.benchmarks import Benchmark
 from strategies.strategy import Strategy
 from strategies.out_of_sample import StrategyOutOfSample
 from threshold_optim import ThresholdOptimizer
+from statistics import Statistic
 import datetime as dt
 
 if __name__ == "__main__":
     # Benchmark (quarterly, monthly, annually, never, five_percent)
 
-    bm_type_ls = ['quarterly', 'monthly', 'annually', 'never', 'five_percent']
-    bm_type_ls = ['monthly']
+    bm_type_ls = ['quarterly', 'monthly', 'annually', 'never']
+    # bm_type_ls = ['monthly']
 
-    for bm in bm_type_ls:
-        benchmark = Benchmark(config_path=Path('config') / 'config_benchmark.ini')
-        benchmark.bm_type = bm
-        benchmark.strategy_name = f"{bm}_rebalance"
-        root_name = benchmark.strategy_name
-        kpi_df_ls = []
-        for rc in range(1, 11):
-            benchmark.strategy_name = f"{root_name}_{rc * 10}"
-            benchmark.strategy_risk_class = str(rc * 10)
-            benchmark.manage_portfolio()
-            benchmark.export_files()
-            # benchmark.qplix_upload()
-            kpi_dic = benchmark.get_kpi()
-            kpi_df = pd.DataFrame([kpi_dic])
-            kpi_df_ls.append(kpi_df)
-    kpi_all_df = pd.concat(kpi_df_ls)
-    kpi_all_df.set_index("Strategy", inplace=True)
-    folderpath = benchmark.root_path
-    filename = f"kpi_summary_{bm}.csv"
-
-    # kpi_df_ls = []
-    # scale_unit = 0.09
-    # optim_strategy = Strategy(config_path=Path('config') / 'config_strategy.ini', scale_unit=scale_unit)
-    # root_name = optim_strategy.strategy_name
-    # for rc in range(2, 3):
-    #     optim_strategy.strategy_name = f"{root_name}_{rc * 10}"
-    #     optim_strategy.strategy_risk_class = str(rc * 10)
-    #     optim_strategy.manage_portfolio()
-    #     optim_strategy.export_files()
-    #     kpi_dic = optim_strategy.get_kpi()
-    #     kpi_df = pd.DataFrame([kpi_dic])
-    #     kpi_df_ls.append(kpi_df)
+    kpi_df_ls = []
+    # for bm in bm_type_ls:
+    #     benchmark = Benchmark(config_path=Path('config') / 'config_benchmark.ini')
+    #     benchmark.bm_type = bm
+    #     benchmark.strategy_name = f"{bm}_rebalance"
+    #     root_name = benchmark.strategy_name
+    #
+    #     for rc in range(1, 11):
+    #         benchmark.strategy_name = f"{root_name}_{rc * 10}"
+    #         benchmark.strategy_risk_class = str(rc * 10)
+    #         benchmark.manage_portfolio()
+    #         benchmark.export_files()
+    #         kpi_dic = benchmark.get_kpi()
+    #         kpi_df = pd.DataFrame([kpi_dic])
+    #         kpi_df_ls.append(kpi_df)
     # kpi_all_df = pd.concat(kpi_df_ls)
+
+    optim_strategy = Strategy(config_path=Path('config') / 'config_strategy.ini', scale_unit=0.09)
+    root_name = optim_strategy.strategy_name
+    for rc in range(1, 11):
+        optim_strategy.strategy_name = f"{root_name}_{rc * 10}"
+        optim_strategy.strategy_risk_class = str(rc * 10)
+        optim_strategy.manage_portfolio()
+        optim_strategy.export_files()
+
+        kpi_dic = Statistic(optim_strategy).get_kpi()
+        kpi_df = pd.DataFrame([kpi_dic]).transpose()
+        kpi_df.rename(columns={0: kpi_dic['Strategy']}, inplace=True)
+        kpi_df.drop("Strategy", inplace=True)
+        kpi_df_ls.append(kpi_df)
+
+    kpi_all_df = pd.concat(kpi_df_ls, axis=1)
     # kpi_all_df.set_index("Strategy", inplace=True)
-    # folderpath = optim_strategy.root_path
-    # filename = f"kpi_summary_optimal.csv"
+    folderpath = optim_strategy.root_path
+    filename = f"kpi_summary_optimal.csv"
 
 
     # Optimal Strategy
@@ -83,6 +83,6 @@ if __name__ == "__main__":
     # kpi_all_df.set_index("Strategy", inplace=True)
     # # kpi_all_df.loc[optim_strategy.strategy_name, "Optimal Threshold"] = res.x
     # folderpath = benchmark.root_path
-    # filename = f"kpi_summary_{bm_type}.csv"
+    filename = f"kpi_summary.csv"
     kpi_all_df.to_csv(folderpath / filename)
     print(f'KPI Summary exported to {folderpath / filename}')

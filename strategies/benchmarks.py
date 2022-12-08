@@ -73,7 +73,7 @@ class Benchmark(Portfolio):
             self.details_np[0, self.inv_col_np] = self.details_np[0, self.wts_col_np] * self.amount_inv
             self.details_np[0, self.hyp_amount_inv_col] = self.details_np[0, self.inv_col_np].sum()
         self.calc_portfolio_ret(t)
-        self.reset_weights(t) if self.check_rebal(t) else self.calc_weights(t)
+        # self.reset_weights(t) if self.check_rebal(t) else self.calc_weights(t)
 
 
 if __name__ == "__main__":

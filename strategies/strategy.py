@@ -136,9 +136,7 @@ class Strategy(Portfolio):
         """
 
         def get_cluster_weight(instruments_table, rc, cluster):
-            """
-            This function gets the weight on Cluster Level
-            """
+            """This function gets the weight on Cluster Level"""
             wts_sum = instruments_table[instruments_table["UNIT I"] == cluster][rc].sum()
             return wts_sum
 
@@ -155,9 +153,7 @@ class Strategy(Portfolio):
         Set UNIT II Threshold, logic derived from current methodology
         """
         def get_cluster_weight(instruments_table, rc, cluster):
-            """
-            This function gets the weight on Cluster Level
-            """
+            """This function gets the weight on Cluster Level"""
             wts_sum = instruments_table[instruments_table["UNIT II"] == cluster][rc].sum()
             return wts_sum
 
@@ -170,7 +166,14 @@ class Strategy(Portfolio):
                 next_rc = this_rc + 10
                 curr_cluster_weight = get_cluster_weight(self.instruments_table, str(this_rc), cluster)
                 next_cluster_weight = get_cluster_weight(self.instruments_table, str(next_rc), cluster)
-                self.unit2_thres[cluster] = abs(curr_cluster_weight - next_cluster_weight) / 2
+
+                thres = abs(curr_cluster_weight - next_cluster_weight) / 2
+                if cluster == 'BONDS HY':
+                    thres = curr_cluster_weight * 0.1 if thres < 0.1 else thres
+                elif cluster == 'EQU EM':
+                    thres = curr_cluster_weight * 0.09 if thres < 0.09 else thres
+
+                self.unit2_thres[cluster] = thres
 
     def set_unit3_threshold(self):
         """
@@ -194,9 +197,10 @@ class Strategy(Portfolio):
         unit_rebalance_col = getattr(self, f"{cluster_str}_rebalance_col")
 
         for cluster in unit_ls:
-            weight = self.details_np[t - 1, unit_idx[cluster]].sum()
             cluster_wt = unit_weights[cluster]
+            weight = self.details_np[t - 1, unit_idx[cluster]].sum()
             thres = unit_thres[cluster]
+
             if cluster_wt - thres < weight < cluster_wt + thres:
                 pass
             else:
@@ -222,17 +226,16 @@ class Strategy(Portfolio):
         Daily Routine what is calculated on each day / over each row
         """
         if self.details.index[t] == self.start_date:  # INIT WEIGHTS
+            self.reset_weights(t - 1)
             self.details_np[0, self.pf_ret_col] = 0
             self.details_np[0, self.pf_cum_ret_col] = 0
-            self.details_np[0, self.hyp_amount_inv_col] = self.amount_inv
-            self.reset_weights(t - 1)
+            self.details_np[0, self.inv_col_np] = self.details_np[0, self.wts_col_np] * self.amount_inv
+            self.details_np[0, self.hyp_amount_inv_col] = self.details_np[0, self.inv_col_np].sum()
         self.calc_portfolio_ret(t)
-        self.reset_weights(t) if self.check_rebal(t) else self.calc_weights(t)
-
 
 if __name__ == "__main__":
     # Example Execution of Strategy Object
-    strategy = Strategy(config_path=Path(__file__).parents[1] / 'config/config_strategy.ini', scale_unit=0.020925644969531886)
+    strategy = Strategy(config_path=Path(__file__).parents[1] / 'config/config_strategy.ini', scale_unit = 0.020925644969531886)
     strategy.manage_portfolio()  # Returns a KPI Dictionary
     strategy.export_files()  # Exports Detail Sheet (also triggered in manage_portfolio
 

@@ -136,72 +136,6 @@ class Portfolio(object):
 
         self.go_to_sleep()
 
-    def get_kpi(self):
-        """
-        This function calculates the KPIs deemed necessary.
-        """
-        days_per_year = self.trading_days
-
-        # Count of Rebalancing
-        self.strategy_name
-        try:
-            rebal_count_unit1 = self.details.loc[:, "UNIT1 Rebalance"].sum()
-            rebal_count_unit2 = self.details.loc[:, "UNIT2 Rebalance"].sum()
-            rebal_count_unit3 = self.details.loc[:, "UNIT3 Rebalance"].sum()
-        except KeyError:
-            rebal_count_unit1 = 0
-            rebal_count_unit2 = 0
-            rebal_count_unit3 = 0
-        rebal_count = self.details.loc[:, "Rebalance"].sum()
-
-        # Sharpe Ratio Proxy
-        pf_ret = self.details["Portfolio Return"].values[1:]
-        avg_ret = np.average(pf_ret)
-        sr_1 = ((1 + avg_ret) ** days_per_year) - 1
-        stdev_pf_ret = np.std(pf_ret, ddof=1)
-        sr_2 = stdev_pf_ret * np.sqrt(days_per_year)
-        sr = sr_1 / sr_2
-        sr_str = f'{"{:.5f}".format(sr)}'
-
-        # Max Drawdown
-        levels = pd.concat([pd.Series(1.0), self.details["Cumulative Portfolio Return"][1:]+1])
-        max = np.maximum.accumulate(levels)
-        max_drawdown = (levels / max - 1).min()
-        mdd = max_drawdown
-        mdd_str = f'{"{:.2f}".format(mdd * 100)} %'
-
-        ## Average annualised return
-        arth_avg_pd = pf_ret.mean()
-        arth_avg_pa = (arth_avg_pd + 1) ** days_per_year - 1
-        arth_avg_pd_str = f'{"{:.4f}".format(arth_avg_pd * 100)} %'
-
-        # Annual Return Vola
-        array = np.array(self.details["Portfolio Return"][1:])
-        std_pa = (((array + 1) ** 2).mean() ** days_per_year - (array + 1).mean() ** (2 * days_per_year)) ** (1 / 2)
-        vola = std_pa
-        vola_str = f'{"{:.2f}".format(vola * 100)} %'
-
-        # Total Return
-        tot_ret = (self.details.loc[self.end_date, "Cumulative Portfolio Return"])
-        tot_ret_str = f'{"{:.2f}".format(tot_ret* 100)} %'
-
-        kpi_dic = {"Strategy": self.strategy_name,
-                   "Total Return": tot_ret_str,
-                   # "Sharpe Ratio Proxy": sr_str,
-                   "Rebalancing Count": rebal_count,
-                   "Rebalancing Count UNIT1": rebal_count_unit1,
-                   "Rebalancing Count UNIT2": rebal_count_unit2,
-                   "Rebalancing Count UNIT3": rebal_count_unit3,
-                   "Maximum Drawdown": mdd_str,
-                   "Average annualised return": arth_avg_pd_str,
-                   "Annualized Volatility": vola_str}
-        # weight1_dic = {cluster: self.details_np[-1, self.unit1_idx[cluster]].sum() for cluster in self.unit1_ls}
-        # weight2_dic = {cluster: self.details_np[-1, self.unit2_idx[cluster]].sum() for cluster in self.unit2_ls}
-        # weight3_dic = {cluster: self.details_np[-1, self.unit3_idx[cluster]].sum() for cluster in self.unit3_ls}
-
-        # ret_dic = {**kpi_dic, **weight1_dic, **weight2_dic, **weight3_dic}
-        ret_dic = {**kpi_dic }
-        return ret_dic
 
     @abstractmethod
     def wake_up_strat(self):
@@ -273,12 +207,13 @@ class Portfolio(object):
             prod_cost = inst.product_cost
 
             ####### martin version
-            prod_cost_daily = (1 + prod_cost) ** (1 / self.trading_days) - 1
-            new_ret_series = ret_series
+            cost_factor = (1 + prod_cost) ** (1 / self.trading_days) - 1
+            new_ret_series = ret_series - cost_factor
 
             ####### truc version
             # cost_factor = (1 - prod_cost) ** (1 / self.trading_days)
             # new_ret_series = (1 + ret_series) * cost_factor - 1
+
             self.details.loc[:, f"{inst.ticker} Return"] = new_ret_series
 
     @abstractmethod
@@ -329,8 +264,8 @@ class Portfolio(object):
             inv_current = self.details_np[t - 1, inst_inv_col]
 
             diff = abs(inv_target - inv_current)
-            # inst_trading_cost = diff * inst.trading_cost
-            inst_trading_cost = diff * 0
+            inst_trading_cost = diff * inst.trading_cost
+            # inst_trading_cost = diff * 0
 
             inv_actual = inv_target - inst_trading_cost
             self.details_np[t, inst_inv_col] = inv_actual
@@ -349,6 +284,32 @@ class Portfolio(object):
         self.details_np[t, self.hyp_trading_cost_col] = trading_cost
         # pf_ret = hyp_amount_inv_t / hyp_amount_inv_tm1 - 1
 
+    def apply_liqid_fee(self, t):
+        # Apply LIQID Fee
+        month_today = self.details.index[t].month
+        try:
+            month_tmr = self.details.index[t + 1].month
+        except IndexError:
+            month_tmr = month_today
+
+        if month_today != month_tmr and month_today in (3, 6, 9, 12):
+            quarterly_cost = self.liqid_fee / 4
+            hyp_amount_inv_t = self.details_np[t, self.inv_col_np].sum()
+            cost_to_deduct = hyp_amount_inv_t * quarterly_cost
+
+            cash_ticker = 'LS01TREU Index'
+            cash_inv_col = self.details.columns.get_loc(f"{cash_ticker} Invested")
+            cash_current = self.details_np[t, cash_inv_col]
+            cash_after_cost = cash_current - cost_to_deduct
+            self.details_np[t, cash_inv_col] = cash_after_cost
+
+            # hyp_amount_inv_t_after = self.details_np[t, self.inv_col_np].sum()
+
+            # pf_ret = hyp_amount_inv_t / hyp_amount_inv_tm1 - 1
+
+            # self.details_np[t, self.wts_col_np] = self.details_np[t, self.inv_col_np] / hyp_amount_inv_t
+            # self.details_np[t, self.hyp_liqid_cost_col] = cost_to_deduct
+
     def calc_portfolio_ret(self, t):
         """
         This function calculates the Portfolio Ret
@@ -364,53 +325,23 @@ class Portfolio(object):
         ret_array_t = self.details_np[t, self.ret_col_np]
         inst_inv_arr_t = inst_inv_arr_tm1 * (1 + ret_array_t)
         self.details_np[t, self.inv_col_np] = inst_inv_arr_t
+
+        self.apply_liqid_fee(t)  # if EOM
+
         hyp_amount_inv_t = self.details_np[t, self.inv_col_np].sum()
         self.details_np[t, self.hyp_amount_inv_col] = hyp_amount_inv_t
-
         pf_ret = hyp_amount_inv_t / hyp_amount_inv_tm1 - 1
+        self.details_np[t, self.pf_ret_col] = pf_ret
+
+        # calc_weights
         wts_arr_t = self.details_np[t, self.inv_col_np] / hyp_amount_inv_t
         self.details_np[t, self.wts_col_np] = wts_arr_t
-
-
-        # Apply LIQID Fee
-
-        month_today = self.details.index[t].month
-        try:
-            month_tmr = self.details.index[t+1].month
-        except IndexError:
-            month_tmr = month_today
-
-        if month_today != month_tmr and month_today in (3, 6, 9, 12):
-            # quarterly_cost_factor = (1 - self.liqid_fee / 4) ** (1 / 63)
-            quarterly_cost_factor = (1 - self.liqid_fee / 4)
-
-            quarterly_cost = self.liqid_fee / 4
-            hyp_amount_inv_t = self.details_np[t, self.hyp_amount_inv_col]
-            cost_to_deduct = hyp_amount_inv_t * quarterly_cost
-
-            cash_ticker = 'LS01TREU Index'
-            cash_inv_col = self.details.columns.get_loc(f"{cash_ticker} Invested")
-            cash_current = self.details_np[t, cash_inv_col]
-            cash_after_cost = cash_current - cost_to_deduct
-            self.details_np[t, cash_inv_col] = cash_after_cost
-
-            hyp_amount_inv_t = self.details_np[t, self.inv_col_np].sum()
-
-            pf_ret = hyp_amount_inv_t / hyp_amount_inv_tm1 - 1
-
-            self.details_np[t, self.wts_col_np] = self.details_np[t, self.inv_col_np] / hyp_amount_inv_t
-            self.details_np[t, self.hyp_liqid_cost_col] = cost_to_deduct
-
-        self.details_np[t, self.pf_ret_col] = pf_ret
 
         # Cumulative Portfolio Return
         pf_cum_ret_tm1 = self.details_np[t-1, self.pf_cum_ret_col]
         pf_cum_ret_t = (pf_cum_ret_tm1 + 1) * (pf_ret + 1) - 1
         self.details_np[t, self.pf_cum_ret_col] = pf_cum_ret_t
 
-        # Hyp Amount Invested
-        # hyp_amount_inv_t = hyp_amount_inv_tm1 * (pf_ret + 1)
-        # self.details_np[t, self.hyp_amount_inv_col] = hyp_amount_inv_t
         return pf_ret
 
     @abstractmethod
