@@ -107,7 +107,8 @@ class Portfolio(object):
         tbl = pd.read_csv(path)
         tbl[index_col] = tbl[index_col].apply(lambda x: dt.datetime.strptime(x, "%Y-%m-%d").date())
         tbl = tbl.set_index(index_col)
-        start_date = self.start_date + dt.timedelta(days=-1)
+
+        start_date = self.calendar.bday_add(self.start_date, days=-1)
         price_ret_df = tbl.loc[start_date:, [inst.ticker for inst in self.instrument_ls]]
 
         # SUBSTITUTE
@@ -300,8 +301,12 @@ class Portfolio(object):
             cash_ticker = 'LS01TREU Index'
             cash_inv_col = self.details.columns.get_loc(f"{cash_ticker} Invested")
             cash_current = self.details_np[t, cash_inv_col]
+            cash_tm90 = self.details_np[t-90, cash_inv_col]
+            cash_tm90 = self.details_np[0, cash_inv_col] if np.isnan(cash_tm90) else cash_tm90
             cash_after_cost = cash_current - cost_to_deduct
             self.details_np[t, cash_inv_col] = cash_after_cost
+
+            self.details_np[t, self.liqid_cost_col] = cost_to_deduct
 
             # hyp_amount_inv_t_after = self.details_np[t, self.inv_col_np].sum()
 

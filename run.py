@@ -30,9 +30,9 @@ if __name__ == "__main__":
     #         kpi_df_ls.append(kpi_df)
     # kpi_all_df = pd.concat(kpi_df_ls)
 
-    optim_strategy = Strategy(config_path=Path('config') / 'config_strategy.ini', scale_unit=0.09)
+    optim_strategy = Strategy(config_path=Path('config') / 'config_strategy.ini', scale_unit=0.046301178960664546)
     root_name = optim_strategy.strategy_name
-    for rc in range(1, 11):
+    for rc in range(5, 6):
         optim_strategy.strategy_name = f"{root_name}_{rc * 10}"
         optim_strategy.strategy_risk_class = str(rc * 10)
         optim_strategy.manage_portfolio()
@@ -49,8 +49,7 @@ if __name__ == "__main__":
     folderpath = optim_strategy.root_path
     filename = f"kpi_summary_optimal.csv"
 
-
-    # Optimal Strategy
+    # Optimal Strategy1
     # study = ThresholdOptimizer(start_date=dt.date(2001, 1, 18), end_date=dt.date(2022, 10, 18))
     # res = study.threshold_optimum()
     # optim_strategy = Strategy(config_path=Path('config') / 'config_strategy.ini', scale_unit=res.x)

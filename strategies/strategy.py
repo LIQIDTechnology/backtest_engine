@@ -162,16 +162,21 @@ class Strategy(Portfolio):
                 self.unit2_thres[cluster] = 0.01
             else:
                 this_rc = int(self.strategy_risk_class)
-                this_rc = 90 if this_rc == 100 else this_rc
+
                 next_rc = this_rc + 10
                 curr_cluster_weight = get_cluster_weight(self.instruments_table, str(this_rc), cluster)
-                next_cluster_weight = get_cluster_weight(self.instruments_table, str(next_rc), cluster)
+                try:
+                    next_cluster_weight = get_cluster_weight(self.instruments_table, str(next_rc), cluster)
+                except KeyError:
+                    prev_rc = this_rc - 10
+                    next_cluster_weight = get_cluster_weight(self.instruments_table, str(prev_rc), cluster)
 
                 thres = abs(curr_cluster_weight - next_cluster_weight) / 2
+
                 if cluster == 'BONDS HY':
-                    thres = curr_cluster_weight * 0.1 if thres < 0.1 else thres
+                    thres = curr_cluster_weight * 0.1 if thres / curr_cluster_weight < 0.1 else thres
                 elif cluster == 'EQU EM':
-                    thres = curr_cluster_weight * 0.09 if thres < 0.09 else thres
+                    thres = curr_cluster_weight * 0.09 if thres / curr_cluster_weight < 0.09 else thres
 
                 self.unit2_thres[cluster] = thres
 
